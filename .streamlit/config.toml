@@ -1,0 +1,22 @@
+[global]
+
+[server]
+headless = true
+runOnSave = false
+fileWatcherType = "none"
+port = 8501
+address = "0.0.0.0"
+
+[client]
+toolbarMode = "viewer"
+showSidebarNavigation = false
+
+[browser]
+gatherUsageStats = false
+
+[theme]
+primaryColor = "#6C63FF" 
+backgroundColor = "#1F1F28"
+secondaryBackgroundColor = "#272730"
+textColor = "#D0D0D5"
+font = "sans serif"

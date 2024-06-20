@@ -1,0 +1,19 @@
+services:
+  import:
+    image: markis/dynasty-import-job
+    build:
+      context: .
+      dockerfile: Containerfile
+    env_file: .env
+    entrypoint: ["python", "-m"]
+    command: ["dynasty"]
+
+  app:
+    image: markis/dynasty
+    build:
+      context: .
+      dockerfile: Containerfile
+    entrypoint: ["streamlit", "run"]
+    command: ["/src/dynasty/streamlit/home.py"]
+    ports:
+      - 8501:8501

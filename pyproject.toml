@@ -1,0 +1,81 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "dynasty"
+dynamic = ["version"]
+description = 'Dynasty Football'
+readme = "README.md"
+requires-python = ">=3.12"
+license = "MIT"
+keywords = []
+authors = [
+  { name = "Markis Taylor", email = "m@rkis.net" },
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Programming Language :: Python",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: Implementation :: CPython",
+]
+dependencies = [
+  "requests",
+  "beautifulsoup4",
+  "pydantic",
+  "sqlmodel",
+  "streamlit",
+  "psycopg2-binary",
+  "pandas",
+  "plotly",
+]
+
+[project.urls]
+Documentation = "https://github.com/markis/dynasty#readme"
+Issues = "https://github.com/markis/dynasty/issues"
+Source = "https://github.com/markis/dynasty"
+
+[tool.hatch.version]
+path = "dynasty/__about__.py"
+
+[tool.hatch.envs.types]
+extra-dependencies = [
+  "mypy>=1.0.0",
+  "pytest"
+]
+[tool.hatch.envs.types.scripts]
+check = "mypy --install-types --non-interactive {args:dynasty tests}"
+
+[tool.mypy]
+strict = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.coverage.run]
+source_pkgs = ["dynasty", "tests"]
+branch = true
+parallel = true
+omit = [
+  "dynasty/__about__.py",
+]
+
+[tool.coverage.paths]
+dynasty = ["dynasty"]
+tests = ["tests", "*/dynasty/tests"]
+
+[tool.coverage.report]
+exclude_also = [
+  "def __repr__",
+  "if self.debug:",
+  "if settings.DEBUG",
+  "raise AssertionError",
+  "raise NotImplementedError",
+  "assert_never",
+  "if 0:",
+  "if __name__ == .__main__.:",
+  "if TYPE_CHECKING:",
+  "class .*\\bProtocol\\):",
+  "@(abc\\.)?abstractmethod",
+]
