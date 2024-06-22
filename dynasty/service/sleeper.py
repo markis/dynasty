@@ -4,7 +4,7 @@ from typing import Final, NotRequired, Self, TypedDict
 
 import requests
 
-from dynasty.models import League, LeagueType, Player, PlayerPosition, Team
+from dynasty.models import League, LeagueType, Player, PlayerPosition, Roster, Team
 from dynasty.util import generate_id, get_date, get_height
 
 CURRENT_YEAR = 2024
@@ -58,7 +58,7 @@ class SleeperRosterSettings(TypedDict):
     fpts: int
 
 
-class SleeperRoster(TypedDict):
+class SleeperRosterDict(TypedDict):
     # taxi: None
     starters: list[str]
     settings: SleeperRosterSettings
@@ -106,6 +106,37 @@ class SleeperLeagueDict(TypedDict):
     name: str
 
 
+class SleeperUserMetadataDict(TypedDict, total=False):
+    mention_pn: str
+    archived: str | None
+    allow_pn: str
+    team_name: str | None
+    avatar: str | None
+    user_message_pn: str | None
+    transaction_waiver: str | None
+    transaction_trade: str | None
+    transaction_free_agent: str | None
+    transaction_commissioner: str | None
+    trade_block_pn: str | None
+    team_name_update: str | None
+    player_nickname_update: str | None
+    player_like_pn: str | None
+    mascot_message: str | None
+    league_report_pn: str | None
+    allow_sms: str | None
+
+
+class SleeperUserDict(TypedDict):
+    user_id: str
+    settings: dict[str, str] | None
+    metadata: SleeperUserMetadataDict
+    league_id: str
+    is_owner: bool | None
+    is_bot: bool
+    display_name: str
+    avatar: str
+
+
 class SleeperService:
     """Service for getting Sleeper api."""
 
@@ -132,6 +163,7 @@ class SleeperService:
 
     @staticmethod
     def convert_player_data(sleeper_id: str, player_dict: SleeperPlayerDict) -> Player | None:
+        """Convert Sleeper player data to Player model"""
         if not (full_name := player_dict.get("full_name")):
             return None
         if not (birth_date := get_date(player_dict["birth_date"])):
@@ -176,6 +208,7 @@ class SleeperService:
 
     @staticmethod
     def convert_league_data(league_dict: SleeperLeagueDict) -> League | None:
+        """Convert Sleeper league data to League model"""
         is_super_flex = "SUPER_FLEX" in league_dict["roster_positions"]
         league_type: LeagueType = LeagueType.SuperFlex if is_super_flex else LeagueType.Standard
 
@@ -183,6 +216,22 @@ class SleeperService:
             id=league_dict["league_id"],
             league_type=league_type,
             name=league_dict["name"],
+        )
+
+    @staticmethod
+    def convert_roster_data(league_dict: SleeperRosterDict, user_dict: SleeperUserDict) -> Roster:
+        """Convert Sleeper league data to League model"""
+        starters = [int(sleeper_id) for sleeper_id in league_dict["starters"] if sleeper_id and sleeper_id.isnumeric()]
+        players = [int(sleeper_id) for sleeper_id in league_dict["players"] if sleeper_id and sleeper_id.isnumeric()]
+        name = user_dict["display_name"]
+
+        return Roster(
+            league_id=league_dict["league_id"],
+            name=name,
+            owner_id=league_dict["owner_id"],
+            settings=league_dict["settings"],
+            starters=starters,
+            players=players,
         )
 
     def get_players(self) -> Iterable[Player]:
@@ -215,12 +264,21 @@ class SleeperService:
 
         return result
 
-    def get_rosters(self, league_id: str, owner_id: str) -> Sequence[str]:
+    def get_rosters(self, league_id: str) -> Sequence[Roster]:
         url = f"https://api.sleeper.app/v1/league/{league_id}/rosters"
         page = self.session.get(url)
-        rosters: list[SleeperRoster] = page.json()
+        rosters: list[SleeperRosterDict] = page.json()
 
-        roster = next((roster for roster in rosters if roster["owner_id"] == owner_id), None)
-        if not roster:
-            return []
-        return roster["players"]
+        url = f"https://api.sleeper.app/v1/league/{league_id}/users"
+        page = self.session.get(url)
+        users: list[SleeperUserDict] = page.json()
+
+        def get_user(roster: SleeperRosterDict) -> SleeperUserDict:
+            for user in users:
+                if user["user_id"] == roster["owner_id"]:
+                    return user
+
+            err = f"User {roster["owner_id"]} not found"
+            raise ValueError(err)
+
+        return tuple(self.convert_roster_data(roster, get_user(roster)) for roster in rosters if roster)

@@ -1,17 +1,22 @@
 import re
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import date
-from enum import IntEnum, StrEnum
-from typing import Final, Self
+from enum import StrEnum
+from typing import Final, Self, TypedDict
 from uuid import UUID
 
+from pydantic.main import BaseModel
 from sqlalchemy import UniqueConstraint
 from sqlmodel import Field, SQLModel
 
 
-class LeagueType(IntEnum):
-    Standard = 1
-    SuperFlex = 2
+class RankingSet(StrEnum):
+    KeeperTradeCut = "ktc"
+
+
+class LeagueType(StrEnum):
+    Standard = "standard"
+    SuperFlex = "superflex"
 
 
 POS_MAP: Final[Mapping[str, str]] = {
@@ -152,7 +157,26 @@ class PlayerRanking(SQLModel, table=True):
     value: int
 
 
-class League(SQLModel):
+class League(BaseModel):
     id: str
     league_type: LeagueType
     name: str
+
+
+class SleeperRosterSettings(TypedDict):
+    wins: int
+    waiver_position: int
+    waiver_budget_used: int
+    total_moves: int
+    ties: int
+    losses: int
+    fpts: int
+
+
+class Roster(BaseModel):
+    league_id: str
+    owner_id: str
+    name: str
+    settings: SleeperRosterSettings
+    starters: Sequence[int]
+    players: Sequence[int]
