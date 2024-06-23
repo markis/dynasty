@@ -14,6 +14,7 @@ POSITIONS: Final[Iterable[str]] = ("QB", "RB", "WR", "TE")
 class UserInput(NamedTuple):
     owner_id: str
     league: League
+    rankings_set: RankingSet
 
 
 def get_league_name(league: League) -> str:
@@ -55,13 +56,24 @@ def get_rosters_df(league_id: str) -> DataFrame:
 
 
 @st.cache_data(ttl=300)
-def get_rankings(league_type: LeagueType, ranking_set: RankingSet = RankingSet.KeeperTradeCut) -> DataFrame:
-    return pd.read_csv(f"./dynasty/streamlit/{ranking_set.value}-{league_type.value}.csv")
+def get_rankings(league_type: LeagueType, ranking_set: RankingSet = RankingSet.KeepTradeCut) -> DataFrame:
+    return pd.read_csv(f"./dynasty/streamlit/{ranking_set.name.lower()}-{league_type.value.lower()}.csv")
 
 
 @st.cache_data(ttl=300)
 def get_players() -> DataFrame:
     return pd.read_csv("./dynasty/streamlit/players.csv")
+
+
+def get_league_values(roster_df: DataFrame, *, only_starters: bool = False) -> DataFrame:
+    league_values = roster_df.groupby("owner_name")["value"].sum().reset_index()
+
+    owner_pos_values = roster_df.groupby(["owner_name", "position"])["value"].sum().reset_index()
+    owner_pos_values = owner_pos_values.pivot(index="owner_name", columns="position", values="value").reset_index()
+
+    league_values = pd.merge(league_values, owner_pos_values, on="owner_name", how="left")
+    league_values = league_values[["owner_name", "value", *POSITIONS]]
+    return league_values.sort_values(by="value", ascending=False)
 
 
 def init() -> None:
@@ -90,11 +102,15 @@ def get_user_input() -> UserInput | None:
     if not league:
         return
 
-    return UserInput(owner_id, league)
+    rankings_set = st.sidebar.selectbox("Rankings Set", [RankingSet.KeepTradeCut])
+    if not rankings_set:
+        rankings_set = RankingSet.KeepTradeCut
+
+    return UserInput(owner_id, league, rankings_set)
 
 
 def render(user_input: UserInput) -> None:
-    owner_id, league = user_input
+    owner_id, league, _ = user_input
     _ = st.header(league.name)
     _ = st.markdown(owner_id)
 
@@ -103,41 +119,10 @@ def render(user_input: UserInput) -> None:
     latest = rankings_df.groupby("full_name").last().reset_index()
 
     roster_df = pd.merge(get_rosters_df(league.id), latest, on="sleeper_id", how="inner")
+    league_values = get_league_values(roster_df)
 
-    owner_values = roster_df.groupby("owner_name")["value"].sum().reset_index()
-    owner_values.rename(columns={"value": "roster_value"}, inplace=True)
-    owner_starter_values = roster_df[roster_df["is_starter"]].groupby("owner_name")["value"].sum().reset_index()
-    owner_starter_values.rename(columns={"value": "starters_value"}, inplace=True)
-    owner_bench_values = roster_df[~roster_df["is_starter"]].groupby("owner_name")["value"].sum().reset_index()
-    owner_bench_values.rename(columns={"value": "bench_value"}, inplace=True)
-
-    owner_pos_values = roster_df.groupby(["owner_name", "position"])["value"].sum().reset_index()
-    owner_pos_values = owner_pos_values.pivot(index="owner_name", columns="position", values="value").reset_index()
-    owner_pos_values.rename(
-        columns={"QB": "QB_value", "RB": "RB_value", "WR": "WR_value", "TE": "TE_value"}, inplace=True
-    )
-
-    owner_pos_starter_values = (
-        roster_df[roster_df["is_starter"]].groupby(["owner_name", "position"])["value"].sum().reset_index()
-    )
-    owner_pos_starter_values = owner_pos_starter_values.pivot(
-        index="owner_name", columns="position", values="value"
-    ).reset_index()
-    owner_pos_starter_values.rename(
-        columns={
-            "QB": "QB_starter_value",
-            "RB": "RB_starter_value",
-            "WR": "WR_starter_value",
-            "TE": "TE_starter_value",
-        },
-        inplace=True,
-    )
-
-    owner_values = pd.merge(owner_values, owner_starter_values, on="owner_name", how="left")
-    owner_values = pd.merge(owner_values, owner_bench_values, on="owner_name", how="left")
-    owner_values = pd.merge(owner_values, owner_pos_values, on="owner_name", how="left")
-    owner_values = pd.merge(owner_values, owner_pos_starter_values, on="owner_name", how="left")
-    _ = st.dataframe(owner_values)
+    _ = st.bar_chart(league_values, x="owner_name", y=POSITIONS, use_container_width=True)
+    _ = st.dataframe(league_values, hide_index=True, use_container_width=True)
 
     # for roster in get_rosters(user_input.league.id):
     #     _ = st.dataframe(latest[latest["sleeper_id"].isin(roster.starters)])

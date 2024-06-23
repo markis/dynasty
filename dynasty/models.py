@@ -11,7 +11,7 @@ from sqlmodel import Field, SQLModel
 
 
 class RankingSet(StrEnum):
-    KeeperTradeCut = "ktc"
+    KeepTradeCut = "Keep Trade Cut"
 
 
 class LeagueType(StrEnum):
