@@ -161,6 +161,7 @@ class League(BaseModel):
     id: str
     league_type: LeagueType
     name: str
+    team_count: int
 
 
 class SleeperRosterSettings(TypedDict):

@@ -1,7 +1,9 @@
 from collections.abc import Iterable, Sequence
+from textwrap import dedent
 from typing import Final, NamedTuple
 
 import pandas as pd
+import plotly.express as px
 import streamlit as st
 from pandas.core.frame import DataFrame
 
@@ -15,6 +17,7 @@ class UserInput(NamedTuple):
     owner_id: str
     league: League
     rankings_set: RankingSet
+    starters_only: bool = False
 
 
 def get_league_name(league: League) -> str:
@@ -66,6 +69,9 @@ def get_players() -> DataFrame:
 
 
 def get_league_values(roster_df: DataFrame, *, only_starters: bool = False) -> DataFrame:
+    if only_starters:
+        roster_df = roster_df[roster_df["is_starter"]]
+
     league_values = roster_df.groupby("owner_name")["value"].sum().reset_index()
 
     owner_pos_values = roster_df.groupby(["owner_name", "position"])["value"].sum().reset_index()
@@ -73,6 +79,7 @@ def get_league_values(roster_df: DataFrame, *, only_starters: bool = False) -> D
 
     league_values = pd.merge(league_values, owner_pos_values, on="owner_name", how="left")
     league_values = league_values[["owner_name", "value", *POSITIONS]]
+
     return league_values.sort_values(by="value", ascending=False)
 
 
@@ -106,22 +113,38 @@ def get_user_input() -> UserInput | None:
     if not rankings_set:
         rankings_set = RankingSet.KeepTradeCut
 
-    return UserInput(owner_id, league, rankings_set)
+    starters_only = st.sidebar.checkbox("Starters Only", key="starters_only")
+
+    return UserInput(owner_id, league, rankings_set, starters_only)
 
 
 def render(user_input: UserInput) -> None:
-    owner_id, league, _ = user_input
+    owner_id, league, _, starters_only = user_input
     _ = st.header(league.name)
-    _ = st.markdown(owner_id)
+    details = st.expander("League Info", expanded=False)
+    _ = details.markdown(
+        dedent(f"""
+        * {owner_id}
+        * {league.id}
+        * {league.league_type}
+        * {league.team_count} teams
+        """)
+    )
 
     rankings_df = get_rankings(league.league_type)
-    rankings_df = pd.merge(rankings_df, get_players(), on="sleeper_id", how="inner")
+    rankings_df = pd.merge(get_players(), rankings_df, on="sleeper_id", how="inner")
     latest = rankings_df.groupby("full_name").last().reset_index()
 
-    roster_df = pd.merge(get_rosters_df(league.id), latest, on="sleeper_id", how="inner")
-    league_values = get_league_values(roster_df)
+    roster_df = pd.merge(latest, get_rosters_df(league.id), on="sleeper_id", how="inner")
+    league_values = get_league_values(roster_df, only_starters=starters_only)
 
-    _ = st.bar_chart(league_values, x="owner_name", y=POSITIONS, use_container_width=True)
+    league_values_long_df = league_values.loc[:, ("owner_name", *POSITIONS)].melt(
+        id_vars="owner_name", value_vars=POSITIONS, var_name="position", value_name="value"
+    )
+    _ = st.plotly_chart(
+        px.bar(league_values_long_df, x="owner_name", y="value", color="position"), use_container_width=True
+    )
+
     _ = st.dataframe(league_values, hide_index=True, use_container_width=True)
 
     # for roster in get_rosters(user_input.league.id):

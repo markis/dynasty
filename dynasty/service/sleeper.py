@@ -216,6 +216,7 @@ class SleeperService:
             id=league_dict["league_id"],
             league_type=league_type,
             name=league_dict["name"],
+            team_count=league_dict["total_rosters"],
         )
 
     @staticmethod
