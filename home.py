@@ -1,6 +1,5 @@
-__package__ = "dynasty.streamlit.home"
-
 from collections.abc import Iterable, Sequence
+from pathlib import Path
 from textwrap import dedent
 from typing import Final, NamedTuple
 
@@ -9,10 +8,11 @@ import plotly.express as px
 import streamlit as st
 from pandas.core.frame import DataFrame
 
-from ..models import League, LeagueType, RankingSet, Roster
-from ..service.sleeper import SleeperService
+from dynasty.models import League, LeagueType, RankingSet, Roster
+from dynasty.service.sleeper import SleeperService
 
 POSITIONS: Final[Iterable[str]] = ("QB", "RB", "WR", "TE")
+DATA_DIR: Final[str] = str(Path(__file__).resolve().parent.joinpath("data"))
 
 
 class UserInput(NamedTuple):
@@ -62,12 +62,12 @@ def get_rosters_df(league_id: str) -> DataFrame:
 
 @st.cache_data(ttl=300)
 def get_rankings(league_type: LeagueType, ranking_set: RankingSet = RankingSet.KeepTradeCut) -> DataFrame:
-    return pd.read_csv(f"./dynasty/streamlit/{ranking_set.name.lower()}-{league_type.value.lower()}.csv")
+    return pd.read_csv(f"{DATA_DIR}/{ranking_set.name.lower()}-{league_type.value.lower()}.csv")
 
 
 @st.cache_data(ttl=300)
 def get_players() -> DataFrame:
-    return pd.read_csv("./dynasty/streamlit/players.csv")
+    return pd.read_csv(f"{DATA_DIR}/players.csv")
 
 
 def get_league_values(roster_df: DataFrame, *, only_starters: bool = False) -> DataFrame:
