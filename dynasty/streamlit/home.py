@@ -1,3 +1,5 @@
+__package__ = "dynasty.streamlit.home"
+
 from collections.abc import Iterable, Sequence
 from textwrap import dedent
 from typing import Final, NamedTuple
@@ -7,8 +9,8 @@ import plotly.express as px
 import streamlit as st
 from pandas.core.frame import DataFrame
 
-from ..models import League, LeagueType, RankingSet, Roster
-from ..service.sleeper import SleeperService
+from dynasty.models import League, LeagueType, RankingSet, Roster
+from dynasty.service.sleeper import SleeperService
 
 POSITIONS: Final[Iterable[str]] = ("QB", "RB", "WR", "TE")
 
