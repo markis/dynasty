@@ -10,8 +10,12 @@ RUN --mount=type=cache,target=/var/lib/apt/lists/* \
   apt-get update && apt-get install -y --no-install-recommends \
   postgresql-client-15
 
-COPY pyproject.toml README.md /src/
-COPY dynasty/ /src/dynasty/
+COPY requirements.txt /src/
+RUN --mount=type=cache,target=/var/cache/pip/ \
+  --mount=type=bind,src=.git,dst=/src/.git \
+  pip install -r requirements.txt
+
+COPY . .
 RUN --mount=type=cache,target=/var/cache/pip/ \
   --mount=type=bind,src=.git,dst=/src/.git \
   pip install /src/
