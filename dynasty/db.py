@@ -89,7 +89,7 @@ def upsert_player_rankings(session: Session, player_rankings: list[PlayerRanking
             insert(PlayerRanking)
             .values(
                 player_id=ranking.player_id,
-                league_type=int(ranking.league_type),
+                league_type=ranking.league_type,
                 date=ranking.date,
                 value=ranking.value,
             )
