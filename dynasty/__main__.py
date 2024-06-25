@@ -1,3 +1,4 @@
+import logging
 from collections import defaultdict
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -9,6 +10,9 @@ from dynasty.db import create_database, upsert_player_rankings, upsert_players
 from dynasty.models import LeagueType, Player, PlayerRanking
 from dynasty.service.keeptradecut import KTCService
 from dynasty.service.sleeper import SleeperService
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -51,6 +55,7 @@ def import_players(league_type: LeagueType, *, back_fill: bool = False) -> None:
     """
     engine = create_database()
     player_map = get_player_map(league_type, back_fill=back_fill)
+    logger.info("Importing players", extra={"count": len(player_map), "league_type": league_type})
     with Session(engine) as session:
         upsert_players(
             session,
@@ -64,6 +69,8 @@ def import_players(league_type: LeagueType, *, back_fill: bool = False) -> None:
             [ranking for player_info in player_map.values() for ranking in player_info.ktc_rankings],
         )
         session.commit()
+
+    logger.info("Import complete.")
 
 
 if __name__ == "__main__":
