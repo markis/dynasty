@@ -155,6 +155,7 @@ class PlayerRanking(SQLModel, table=True):
     league_type: LeagueType
     date: date
     value: int
+    is_pick: bool
 
 
 class League(BaseModel):
@@ -177,7 +178,9 @@ class SleeperRosterSettings(TypedDict):
 class Roster(BaseModel):
     league_id: str
     owner_id: str
+    roster_id: int
     name: str
     settings: SleeperRosterSettings
     starters: Sequence[int]
     players: Sequence[int]
+    picks: Sequence[str]

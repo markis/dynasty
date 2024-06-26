@@ -26,6 +26,7 @@ dependencies = [
   "sqlmodel",
   "streamlit",
   "psycopg2-binary",
+  "polars",
   "pandas",
   "plotly",
 ]

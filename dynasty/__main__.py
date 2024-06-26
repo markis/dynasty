@@ -4,9 +4,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from uuid import UUID
 
-from sqlmodel.orm.session import Session
-
-from dynasty.db import create_database, upsert_player_rankings, upsert_players
+from dynasty.db import Session, create_database, upsert_player_rankings, upsert_players
 from dynasty.models import LeagueType, Player, PlayerRanking
 from dynasty.service.keeptradecut import KTCService
 from dynasty.service.sleeper import SleeperService
@@ -40,13 +38,7 @@ def get_player_map(league_type: LeagueType, *, back_fill: bool) -> Mapping[UUID,
             if player.player_id in player_map:
                 player_map[player.player_id].player = player
 
-    ids_to_remove = [
-        player_id
-        for player_id, player_info in player_map.items()
-        if not player_info.player or not player_info.ktc_rankings
-    ]
-
-    return {player_id: player_info for player_id, player_info in player_map.items() if player_id not in ids_to_remove}
+    return player_map
 
 
 def import_players(league_type: LeagueType, *, back_fill: bool = False) -> None:

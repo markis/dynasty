@@ -3,16 +3,17 @@ from pathlib import Path
 from textwrap import dedent
 from typing import Final, NamedTuple
 
-import pandas as pd
 import plotly.express as px
+import polars as pl
 import streamlit as st
-from pandas.core.frame import DataFrame
 
 from dynasty.models import League, LeagueType, RankingSet, Roster
 from dynasty.service.sleeper import SleeperService
+from dynasty.util import generate_id
 
 POSITIONS: Final[Iterable[str]] = ("QB", "RB", "WR", "TE")
-DATA_DIR: Final[str] = str(Path(__file__).resolve().parent.joinpath("data"))
+POSITIONS_WITH_PICK: Final[Iterable[str]] = (*POSITIONS, "PICK")
+DATA_DIR: Final[Path] = Path(__file__).resolve().parent.joinpath("data")
 
 
 class UserInput(NamedTuple):
@@ -20,6 +21,7 @@ class UserInput(NamedTuple):
     league: League
     rankings_set: RankingSet
     starters_only: bool = False
+    include_picks: bool = False
 
 
 def get_league_name(league: League) -> str:
@@ -49,40 +51,71 @@ def get_rosters(league_id: str) -> Sequence[Roster]:
 
 
 @st.cache_data(ttl=300)
-def get_rosters_df(league_id: str) -> DataFrame:
+def get_rosters_df(league_id: str, _players_df: pl.DataFrame, *, include_picks: bool) -> pl.DataFrame:
     def is_starter(roster: Roster, sleeper_id: int) -> bool:
         return sleeper_id in roster.starters
 
     rosters = get_rosters(league_id)
-    arr = (
-        (roster.name, sleeper_id, is_starter(roster, sleeper_id)) for roster in rosters for sleeper_id in roster.players
+    arr: list[tuple[str, str, bool]] = [
+        (roster.name, str(sleeper_id), is_starter(roster, sleeper_id))
+        for roster in rosters
+        for sleeper_id in roster.players
+    ]
+    rosters_df = pl.DataFrame(arr, schema={"owner_name": pl.String, "sleeper_id": pl.String, "is_starter": pl.Boolean})
+    rosters_df = rosters_df.join(_players_df, on="sleeper_id", how="full", coalesce=True)
+
+    # get value by player_id from players_df
+    _player_vals_by_id = {
+        player_id: value for player_id, value in _players_df.select(["player_id", "value"]).rows() if value is not None
+    }
+
+    if not include_picks:
+        return rosters_df
+
+    def get_pick_row(roster_name: str, pick: str) -> tuple[str, str, str, str, int]:
+        player_id = str(generate_id(pick))
+        return (roster_name, player_id, pick, "PICK", _player_vals_by_id.get(player_id, 0))
+
+    picks_arr = [get_pick_row(roster.name, pick) for roster in rosters for pick in roster.picks]
+    picks_df = pl.DataFrame(
+        picks_arr,
+        schema={
+            "owner_name": pl.String,
+            "player_id": pl.String,
+            "full_name": pl.String,
+            "position": pl.String,
+            "value": pl.Int64,
+        },
     )
-    return pd.DataFrame(arr, columns=["owner_name", "sleeper_id", "is_starter"])
+    return pl.concat((rosters_df, picks_df), how="diagonal")
 
 
 @st.cache_data(ttl=300)
-def get_rankings(league_type: LeagueType, ranking_set: RankingSet = RankingSet.KeepTradeCut) -> DataFrame:
-    return pd.read_csv(f"{DATA_DIR}/{ranking_set.name.lower()}-{league_type.value.lower()}.csv")
+def get_rankings(
+    league_type: LeagueType, _players_df: pl.DataFrame, ranking_set: RankingSet = RankingSet.KeepTradeCut
+) -> pl.DataFrame:
+    rankings_df = pl.read_csv(
+        DATA_DIR / f"{ranking_set.name.lower()}-{league_type.value.lower()}.csv",
+        schema={"player_id": pl.String, "date": pl.Date, "value": pl.Int64},
+    )
+    return rankings_df.join(_players_df, on="player_id", how="full", coalesce=True)
 
 
 @st.cache_data(ttl=300)
-def get_players() -> DataFrame:
-    return pd.read_csv(f"{DATA_DIR}/players.csv")
+def get_players() -> pl.DataFrame:
+    with SleeperService() as sleeper:
+        players = sleeper.get_players()
+
+    player_arr = [(player.full_name, str(player.player_id), player.sleeper_id, player.position) for player in players]
+
+    return pl.DataFrame(
+        player_arr,
+        schema={"full_name": pl.String, "player_id": pl.String, "sleeper_id": pl.String, "position": pl.String},
+    )
 
 
-def get_league_values(roster_df: DataFrame, *, only_starters: bool = False) -> DataFrame:
-    if only_starters:
-        roster_df = roster_df[roster_df["is_starter"]]
-
-    league_values = roster_df.groupby("owner_name")["value"].sum().reset_index()
-
-    owner_pos_values = roster_df.groupby(["owner_name", "position"])["value"].sum().reset_index()
-    owner_pos_values = owner_pos_values.pivot(index="owner_name", columns="position", values="value").reset_index()
-
-    league_values = pd.merge(league_values, owner_pos_values, on="owner_name", how="left")
-    league_values = league_values[["owner_name", "value", *POSITIONS]]
-
-    return league_values.sort_values(by="value", ascending=False)
+def get_league_values(roster_df: pl.DataFrame, *, only_starters: bool = False) -> pl.DataFrame:
+    pass
 
 
 def init() -> None:
@@ -116,38 +149,81 @@ def get_user_input() -> UserInput | None:
         rankings_set = RankingSet.KeepTradeCut
 
     starters_only = st.sidebar.checkbox("Starters Only", key="starters_only")
+    include_picks = st.sidebar.checkbox("Include Picks", key="include_picks", value=True)
 
-    return UserInput(owner_id, league, rankings_set, starters_only)
+    return UserInput(owner_id, league, rankings_set, starters_only, include_picks)
 
 
 def render(user_input: UserInput) -> None:
-    owner_id, league, _, starters_only = user_input
+    owner_id, league, _, starters_only, include_picks = user_input
+    positions: Sequence[str] = POSITIONS_WITH_PICK if include_picks and not starters_only else POSITIONS
     _ = st.header(league.name)
     details = st.expander("League Info", expanded=False)
     _ = details.markdown(
         dedent(f"""
-        * {owner_id}
-        * {league.id}
+        * owner: {owner_id}
+        * league: {league.id}
         * {league.league_type}
         * {league.team_count} teams
         """)
     )
 
-    rankings_df = get_rankings(league.league_type)
-    rankings_df = pd.merge(get_players(), rankings_df, on="sleeper_id", how="inner")
-    latest = rankings_df.groupby("full_name").last().reset_index()
-
-    roster_df = pd.merge(latest, get_rosters_df(league.id), on="sleeper_id", how="inner")
-    league_values = get_league_values(roster_df, only_starters=starters_only)
-
-    league_values_long_df = league_values.loc[:, ("owner_name", *POSITIONS)].melt(
-        id_vars="owner_name", value_vars=POSITIONS, var_name="position", value_name="value"
+    players_df = get_players()
+    rankings_df = get_rankings(league.league_type, players_df, user_input.rankings_set)
+    latest_rankings_df = rankings_df.group_by("player_id").agg(pl.all().last())
+    roster_df = (
+        get_rosters_df(league.id, latest_rankings_df, include_picks=include_picks)
+        .join(players_df, on="player_id", how="full", coalesce=True, suffix="_new")
+        .with_columns(
+            [
+                pl.when(pl.col("position").is_null())
+                .then(pl.col("position_new"))
+                .otherwise(pl.col("position"))
+                .alias("position"),
+                pl.when(pl.col("full_name").is_null())
+                .then(pl.col("full_name_new"))
+                .otherwise(pl.col("full_name"))
+                .alias("full_name"),
+            ]
+        )
+        .select(["owner_name", "player_id", "sleeper_id", "full_name", "position", "is_starter", "value"])
+        .filter(pl.col("owner_name").is_not_null())
+        .sort("value", descending=True)
     )
+    if starters_only:
+        roster_df = roster_df.filter(pl.col("is_starter"))
+
+    league_values = roster_df.group_by("owner_name").agg(pl.col("value").sum().alias("value"))
+
+    owner_pos_values = (
+        roster_df.group_by(["owner_name", "position"])
+        .agg(pl.col("value").sum())
+        .pivot(index="owner_name", columns="position", values="value")
+    )
+
+    league_values = (
+        league_values.join(owner_pos_values, on="owner_name", how="left", coalesce=True)
+        .select(["owner_name", "value", *positions])
+        .sort("value", descending=True)
+    )
+    league_values_long_df = league_values.select(("owner_name", *positions)).melt(
+        id_vars="owner_name", value_vars=positions, variable_name="position", value_name="value"
+    )
+
     _ = st.plotly_chart(
         px.bar(league_values_long_df, x="owner_name", y="value", color="position"), use_container_width=True
     )
-
     _ = st.dataframe(league_values, hide_index=True, use_container_width=True)
+
+    owner: str
+    for owner in league_values["owner_name"]:
+        expander = st.expander(f"{owner} Roster", expanded=False)
+        for pos, col in zip(positions, expander.columns(len(positions)), strict=False):
+            _ = col.markdown(f"#### {pos}")
+            group_by_pos = roster_df.filter(pl.col("owner_name") == owner, pl.col("position") == pos).select(
+                ("full_name", "value")
+            )
+            _ = col.dataframe(group_by_pos, use_container_width=True, hide_index=True)
 
     # for roster in get_rosters(user_input.league.id):
     #     _ = st.dataframe(latest[latest["sleeper_id"].isin(roster.starters)])

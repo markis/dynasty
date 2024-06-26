@@ -5,9 +5,13 @@ from typing import Final, NotRequired, Self, TypedDict
 import requests
 
 from dynasty.models import League, LeagueType, Player, PlayerPosition, Roster, Team
-from dynasty.util import generate_id, get_date, get_height
+from dynasty.util import generate_id, get_date, get_height, get_placement
 
 CURRENT_YEAR = 2024
+SLEEPER_IDS_TO_IGNORE = {
+    "4634",  # not "Kenneth Walker III"
+    "232",  # not "Frank Gore Jr"
+}
 
 
 class SleeperPlayerDict(TypedDict):
@@ -137,10 +141,19 @@ class SleeperUserDict(TypedDict):
     avatar: str
 
 
+class SleeperTradedPickDict(TypedDict):
+    previous_owner_id: int
+    owner_id: int
+    roster_id: int
+    season: str
+    round: int
+
+
 class SleeperService:
     """Service for getting Sleeper api."""
 
     session: Final[requests.Session]
+    BASE_URL: Final[str] = "https://api.sleeper.app/v1"
 
     def __init__(self, session: requests.Session | None = None) -> None:
         if session is None:
@@ -164,6 +177,8 @@ class SleeperService:
     @staticmethod
     def convert_player_data(sleeper_id: str, player_dict: SleeperPlayerDict) -> Player | None:
         """Convert Sleeper player data to Player model"""
+        if sleeper_id in SLEEPER_IDS_TO_IGNORE:
+            return None
         if not (full_name := player_dict.get("full_name")):
             return None
         if not (birth_date := get_date(player_dict["birth_date"])):
@@ -220,33 +235,60 @@ class SleeperService:
         )
 
     @staticmethod
-    def convert_roster_data(league_dict: SleeperRosterDict, user_dict: SleeperUserDict) -> Roster:
+    def convert_roster_data(
+        roster_dict: SleeperRosterDict, user_dict: SleeperUserDict, traded_picks: list[SleeperTradedPickDict]
+    ) -> Roster:
         """Convert Sleeper league data to League model"""
-        starters = [int(sleeper_id) for sleeper_id in league_dict["starters"] if sleeper_id and sleeper_id.isnumeric()]
-        players = [int(sleeper_id) for sleeper_id in league_dict["players"] if sleeper_id and sleeper_id.isnumeric()]
+        starters = [int(sleeper_id) for sleeper_id in roster_dict["starters"] if sleeper_id and sleeper_id.isnumeric()]
+        players = [int(sleeper_id) for sleeper_id in roster_dict["players"] if sleeper_id and sleeper_id.isnumeric()]
         name = user_dict["display_name"]
 
+        roster_picks: list[str] = []
+        if traded_picks:
+            next_undrafted_season = CURRENT_YEAR + 1
+            roster_picks = [
+                f"{pick['season']} Mid {get_placement(pick['round'])}"
+                for pick in traded_picks
+                if pick["owner_id"] == roster_dict["roster_id"] and int(pick["season"]) >= next_undrafted_season
+            ]
+            lost_picks: set[str] = {
+                f"{pick['season']} Mid {get_placement(pick['round'])}"
+                for pick in traded_picks
+                if pick["roster_id"] == roster_dict["roster_id"] and int(pick["season"]) >= next_undrafted_season
+            }
+
+            # TODO: year/round should come from the league settings
+            for season in range(CURRENT_YEAR + 1, CURRENT_YEAR + 3):
+                for round_ in range(1, 4):
+                    # convert round number to 1st, 2nd, 3rd, etc.
+                    placement = get_placement(round_)
+                    pick = f"{season} Mid {placement}"
+                    if pick not in roster_picks and pick not in lost_picks:
+                        roster_picks.append(pick)
+
         return Roster(
-            league_id=league_dict["league_id"],
+            league_id=roster_dict["league_id"],
             name=name,
-            owner_id=league_dict["owner_id"],
-            settings=league_dict["settings"],
+            owner_id=roster_dict["owner_id"],
+            settings=roster_dict["settings"],
+            roster_id=roster_dict["roster_id"],
             starters=starters,
             players=players,
+            picks=roster_picks,
         )
 
     def get_players(self) -> Iterable[Player]:
-        url = "https://api.sleeper.app/v1/players/nfl"
+        url = f"{self.BASE_URL}/players/nfl"
         page = self.session.get(url)
         sleeper_players: Mapping[str, SleeperPlayerDict] = page.json()
 
         for sleeper_id, player_dict in sleeper_players.items():
             player = self.convert_player_data(sleeper_id, player_dict)
-            if player and player.active:
+            if player:
                 yield player
 
     def get_sleeper_id(self, username: str) -> str | None:
-        url = f"https://api.sleeper.app/v1/user/{username}/"
+        url = f"{self.BASE_URL}/user/{username}/"
         page = self.session.get(url)
         user: dict[str, str] | None = page.json()
         if not user:
@@ -254,7 +296,7 @@ class SleeperService:
         return user["user_id"]
 
     def get_leagues(self, user_id: str) -> list[League]:
-        url = f"https://api.sleeper.app/v1/user/{user_id}/leagues/nfl/{CURRENT_YEAR}"
+        url = f"{self.BASE_URL}/user/{user_id}/leagues/nfl/{CURRENT_YEAR}"
         page = self.session.get(url)
         leagues: list[SleeperLeagueDict] = page.json()
         result: list[League] = []
@@ -265,21 +307,28 @@ class SleeperService:
 
         return result
 
-    def get_rosters(self, league_id: str) -> Sequence[Roster]:
-        url = f"https://api.sleeper.app/v1/league/{league_id}/rosters"
+    def get_rosters(self, league_id: str, *, include_picks: bool = True) -> Sequence[Roster]:
+        url = f"{self.BASE_URL}/league/{league_id}/rosters"
         page = self.session.get(url)
         rosters: list[SleeperRosterDict] = page.json()
 
-        url = f"https://api.sleeper.app/v1/league/{league_id}/users"
+        url = f"{self.BASE_URL}/league/{league_id}/users"
         page = self.session.get(url)
         users: list[SleeperUserDict] = page.json()
+
+        picks = []
+        if include_picks:
+            picks_url = f"{self.BASE_URL}/league/{league_id}/traded_picks"
+            picks_response = self.session.get(picks_url)
+            picks: list[SleeperTradedPickDict] = picks_response.json()
 
         def get_user(roster: SleeperRosterDict) -> SleeperUserDict:
             for user in users:
                 if user["user_id"] == roster["owner_id"]:
                     return user
 
-            err = f"User {roster["owner_id"]} not found"
+            owner_id = roster["owner_id"]
+            err = f"User {owner_id} not found"
             raise ValueError(err)
 
-        return tuple(self.convert_roster_data(roster, get_user(roster)) for roster in rosters if roster)
+        return tuple(self.convert_roster_data(roster, get_user(roster), picks) for roster in rosters if roster)

@@ -6,10 +6,13 @@ from sqlmodel import Session, SQLModel
 
 from dynasty.models import Player, PlayerRanking
 
-PSQL_URL = getenv("PSQL_URL", "postgresql://localhost/dynasty")
+PSQL_URL = getenv("PSQL_URL", "")
 
 
 def create_database(url: str = PSQL_URL) -> Engine:
+    if not url:
+        err = "PSQL_URL environment variable must be set"
+        raise ValueError(err)
     engine = create_engine(url)
     SQLModel.metadata.create_all(engine)
     return engine
@@ -92,6 +95,7 @@ def upsert_player_rankings(session: Session, player_rankings: list[PlayerRanking
                 league_type=ranking.league_type,
                 date=ranking.date,
                 value=ranking.value,
+                is_pick=ranking.is_pick,
             )
             .on_conflict_do_update(
                 index_elements=["player_id", "league_type", "date"],

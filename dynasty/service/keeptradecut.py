@@ -8,7 +8,7 @@ from uuid import UUID
 
 from bs4.element import Tag
 
-from dynasty.models import LeagueType, PlayerRanking
+from dynasty.models import LeagueType, PlayerPosition, PlayerRanking
 from dynasty.service.soup import SoupService
 from dynasty.util import generate_id
 
@@ -101,18 +101,21 @@ class KTCService:
 
     @staticmethod
     def convert_player_data(data: KTCPlayerData, league_type: LeagueType, *, now: date) -> PlayerRanking:
+        position = PlayerPosition.from_str(data["position"])
         if league_type == LeagueType.SuperFlex:
             return PlayerRanking(
                 player_id=generate_id(data["playerName"]),
                 value=data["superflexValues"]["value"],
                 league_type=LeagueType.SuperFlex,
                 date=now,
+                is_pick=position == PlayerPosition.PICK,
             )
         return PlayerRanking(
             player_id=generate_id(data["playerName"]),
             value=data["oneQBValues"]["value"],
             league_type=LeagueType.Standard,
             date=now,
+            is_pick=position == PlayerPosition.PICK,
         )
 
     def _get_data_from_page(self, url: str, variable: str) -> str | None:

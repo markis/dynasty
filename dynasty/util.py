@@ -1,4 +1,5 @@
 import re
+from collections.abc import Mapping
 from datetime import UTC, date, datetime
 from typing import Final, overload
 from uuid import UUID, uuid5
@@ -8,11 +9,20 @@ REPLACE: Final = re.compile(r"\'|\"|\s+")
 CLEAR: Final = re.compile(r"-+")
 NAMESPACE: Final = UUID("1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed")
 
+NAME_REPLACEMENTS: Final[Mapping[str, str]] = {
+    "marquise-brown": "hollywood-brown",
+    "frank-gore-jr": "frank-gore",
+    "josh-palmer": "joshua-palmer",
+    "gabriel-davis": "gabe-davis",
+    "jeffery-wilson": "jeff-wilson",
+}
+
 
 def normalize_name(name: str) -> str:
     name = name.replace(".", "")
     name = REMOVE.sub("", name.lower())
     name = REPLACE.sub("-", name)
+    name = NAME_REPLACEMENTS.get(name, name)
     return CLEAR.sub("-", name).strip("-")
 
 
@@ -44,3 +54,17 @@ def get_height(height: str) -> int | None:
         return int(feet) * 12 + int(inches)
 
     return int(height) if height else None
+
+
+def get_placement(placement: int) -> str:
+    nd = 2
+    rd = 3
+    if placement in {11, 12, 13}:
+        return f"{placement}th"
+    if placement % 10 == 1:
+        return f"{placement}st"
+    if placement % 10 == nd:
+        return f"{placement}nd"
+    if placement % 10 == rd:
+        return f"{placement}rd"
+    return f"{placement}th"
