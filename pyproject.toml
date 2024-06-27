@@ -29,6 +29,7 @@ dependencies = [
   "polars",
   "pandas",
   "plotly",
+  "prophet"
 ]
 
 [project.urls]

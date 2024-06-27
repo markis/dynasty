@@ -215,8 +215,9 @@ def render(user_input: UserInput) -> None:
     )
     _ = st.dataframe(league_values, hide_index=True, use_container_width=True)
 
-    owner: str
-    for owner in league_values["owner_name"]:
+    # Get list of lower case owner names
+    owners = sorted((str(name) for name in league_values["owner_name"].unique()), key=lambda x: x.lower())
+    for owner in owners:
         expander = st.expander(f"{owner} Roster", expanded=False)
         for pos, col in zip(positions, expander.columns(len(positions)), strict=False):
             _ = col.markdown(f"#### {pos}")
@@ -225,37 +226,30 @@ def render(user_input: UserInput) -> None:
             )
             _ = col.dataframe(group_by_pos, use_container_width=True, hide_index=True)
 
-    # for roster in get_rosters(user_input.league.id):
-    #     _ = st.dataframe(latest[latest["sleeper_id"].isin(roster.starters)])
+        group_by_pos = (
+            roster_df.filter(pl.col("position").is_in(POSITIONS))
+            .filter(pl.col("owner_name") == owner)
+            .select(("full_name", "position", "value"))
+        )
+        joined_df = rankings_df.filter(pl.col("full_name").is_in(group_by_pos["full_name"])).join(
+            group_by_pos, on="full_name", how="full", coalesce=True
+        )
+        result_df = (
+            joined_df.group_by(["full_name"])
+            .agg(pl.col("value").last().alias("value"), pl.col("value").explode().alias("value_history"))
+            .sort("value", descending=True)
+        )
 
-    # df = pd.merge(df, get_players(), on="sleeper_id", how="inner")
-    # df.sort_values(by="date", inplace=True)
-    #
-    # latest = df.groupby("full_name").last().reset_index()
-    #
-    # st.dataframe(latest)
-
-    # grouped_by_pos = latest.groupby("position")
-    #
-    # columns = st.columns(4)
-    # for pos, col in zip(POSITIONS, columns, strict=False):
-    #     with col:
-    #         st.write(f"#### {pos} rankings")
-    #         pos_df: DataFrame = (
-    #             grouped_by_pos.get_group(pos)
-    #             .sort_values(by="value", ascending=False)
-    #             .loc[:, ("full_name", "value")]  # type: ignore[index]
-    #         )
-    #         _ = st.dataframe(
-    #             pos_df,
-    #             use_container_width=True,
-    #             column_config={"full_name": "Player", "value": "Value"},
-    #             hide_index=True,
-    #             key="value",
-    #         )
-    #
-    # fig = px.line(df, x="date", y="value", color="full_name", title="Player Rankings Over Time")
-    # _ = st.plotly_chart(fig, use_container_width=True)
+        _ = expander.dataframe(
+            result_df,
+            column_config={
+                "full_name": st.column_config.Column("Player", width="small"),
+                "value": st.column_config.Column("Value", width="small"),
+                "value_history": st.column_config.AreaChartColumn("Value History", width="large", y_min=0, y_max=100),
+            },
+            use_container_width=True,
+            hide_index=True,
+        )
 
 
 if __name__ == "__main__":
