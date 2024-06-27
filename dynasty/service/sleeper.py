@@ -260,10 +260,8 @@ class SleeperService:
             # TODO: year/round should come from the league settings
             for season in range(CURRENT_YEAR + 1, CURRENT_YEAR + 3):
                 for round_ in range(1, 4):
-                    # convert round number to 1st, 2nd, 3rd, etc.
-                    placement = get_placement(round_)
-                    pick = f"{season} Mid {placement}"
-                    if pick not in roster_picks and pick not in lost_picks:
+                    pick = f"{season} Mid {get_placement(round_)}"
+                    if pick not in lost_picks:
                         roster_picks.append(pick)
 
         return Roster(

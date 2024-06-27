@@ -175,16 +175,14 @@ def render(user_input: UserInput) -> None:
         get_rosters_df(league.id, latest_rankings_df, include_picks=include_picks)
         .join(players_df, on="player_id", how="full", coalesce=True, suffix="_new")
         .with_columns(
-            [
-                pl.when(pl.col("position").is_null())
-                .then(pl.col("position_new"))
-                .otherwise(pl.col("position"))
-                .alias("position"),
-                pl.when(pl.col("full_name").is_null())
-                .then(pl.col("full_name_new"))
-                .otherwise(pl.col("full_name"))
-                .alias("full_name"),
-            ]
+            pl.when(pl.col("position").is_null())
+            .then(pl.col("position_new"))
+            .otherwise(pl.col("position"))
+            .alias("position"),
+            pl.when(pl.col("full_name").is_null())
+            .then(pl.col("full_name_new"))
+            .otherwise(pl.col("full_name"))
+            .alias("full_name"),
         )
         .select(["owner_name", "player_id", "sleeper_id", "full_name", "position", "is_starter", "value"])
         .filter(pl.col("owner_name").is_not_null())
@@ -226,16 +224,14 @@ def render(user_input: UserInput) -> None:
             )
             _ = col.dataframe(group_by_pos, use_container_width=True, hide_index=True)
 
-        group_by_pos = (
-            roster_df.filter(pl.col("position").is_in(POSITIONS))
-            .filter(pl.col("owner_name") == owner)
-            .select(("full_name", "position", "value"))
+        group_by_pos = roster_df.filter(pl.col("position").is_in(POSITIONS), pl.col("owner_name") == owner).select(
+            ("full_name", "position", "value")
         )
         joined_df = rankings_df.filter(pl.col("full_name").is_in(group_by_pos["full_name"])).join(
             group_by_pos, on="full_name", how="full", coalesce=True
         )
         result_df = (
-            joined_df.group_by(["full_name"])
+            joined_df.group_by("full_name")
             .agg(pl.col("value").last().alias("value"), pl.col("value").explode().alias("value_history"))
             .sort("value", descending=True)
         )
@@ -245,11 +241,37 @@ def render(user_input: UserInput) -> None:
             column_config={
                 "full_name": st.column_config.Column("Player", width="small"),
                 "value": st.column_config.Column("Value", width="small"),
-                "value_history": st.column_config.AreaChartColumn("Value History", width="large", y_min=0, y_max=100),
+                "value_history": st.column_config.AreaChartColumn("Value History", width="large"),
             },
             use_container_width=True,
             hide_index=True,
         )
+
+    fa_names = (
+        get_rosters_df(league.id, latest_rankings_df, include_picks=include_picks)
+        .filter(pl.col("owner_name").is_null(), pl.col("value").is_not_null(), pl.col("position").is_in(POSITIONS))
+        .select("full_name")
+    )
+    fa_joined_df = rankings_df.filter(pl.col("full_name").is_in(fa_names["full_name"])).join(
+        fa_names, on="full_name", how="full", coalesce=True
+    )
+    fa_result_df = (
+        fa_joined_df.group_by("full_name", "position")
+        .agg(pl.col("value").last().alias("value"), pl.col("value").explode().alias("value_history"))
+        .sort("value", descending=True)
+    )
+    _ = st.markdown("## Free Agents")
+    _ = st.dataframe(
+        fa_result_df,
+        column_config={
+            "full_name": st.column_config.Column("Player", width="small"),
+            "position": st.column_config.Column("Position", width="small"),
+            "value": st.column_config.Column("Value", width="small"),
+            "value_history": st.column_config.AreaChartColumn("Value History", width="large"),
+        },
+        hide_index=True,
+        use_container_width=True,
+    )
 
 
 if __name__ == "__main__":
