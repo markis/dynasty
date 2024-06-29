@@ -1,4 +1,5 @@
 import logging
+import os
 from collections.abc import Generator
 from uuid import UUID
 
@@ -71,4 +72,5 @@ def import_players(*, back_fill: bool = False) -> None:
 
 
 if __name__ == "__main__":
-    import_players(back_fill=True)
+    back_fill = os.environ.get("BACK_FILL", "false").lower() in ("true", "yes", "on", "1")
+    import_players(back_fill=back_fill)

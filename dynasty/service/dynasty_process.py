@@ -1,6 +1,7 @@
 import codecs
 import csv
 import io
+import os
 from collections.abc import Iterable
 from types import TracebackType
 from typing import Self, TypedDict, TypeGuard
@@ -15,7 +16,7 @@ LATEST_RANKINGS = "https://raw.githubusercontent.com/dynastyprocess/data/master/
 RANKINGS_GIT = "https://github.com/dynastyprocess/data.git"
 RANKINGS_PATH = "files/values.csv"
 
-RANKINGS_TEST_PATH = "/Users/markis/src/dynastyprocess-data/"
+DYNASTY_PROCESS_GIT_PATH = os.getenv("DYNASTY_PROCESS_GIT_PATH", "")
 
 
 class DynastyProcessRow(TypedDict):
@@ -61,7 +62,7 @@ class DynastyProcess:
         """
         Get the latest rankings from the DynastyProcess GitHub repository.
         """
-        repo = git.Repo(RANKINGS_TEST_PATH)
+        repo = git.Repo(DYNASTY_PROCESS_GIT_PATH)
         commits = repo.iter_commits(paths=RANKINGS_PATH)
 
         for commit in commits:
@@ -91,8 +92,3 @@ class DynastyProcess:
             for row in rows
             for league_type in (LeagueType.Standard, LeagueType.SuperFlex)
         )
-
-
-if __name__ == "__main__":
-    svc = DynastyProcess()
-    print(len(list(svc.get_rankings(back_fill=True))))

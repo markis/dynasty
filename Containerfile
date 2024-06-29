@@ -8,7 +8,7 @@ ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
 
 RUN --mount=type=cache,target=/var/lib/apt/lists/* \
   apt-get update && apt-get install -y --no-install-recommends \
-  postgresql-client-15
+  git postgresql-client-15
 
 COPY requirements.txt /src/
 RUN --mount=type=cache,target=/var/cache/pip/ \

@@ -5,6 +5,8 @@ services:
       context: .
       dockerfile: Containerfile
     env_file: .env
+    volumes:
+      - /opt/dynastyprocess-data/:/Users/markis/src/dynastyprocess-data/
     entrypoint: ["python", "-m"]
     command: ["dynasty"]
 
