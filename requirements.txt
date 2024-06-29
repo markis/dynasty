@@ -23,7 +23,6 @@ pandas-stubs==2.2.2.240603
 pillow==10.3.0
 plotly==5.22.0
 polars==0.20.31
-prophet==1.1.5
 protobuf==4.25.3
 pyarrow==16.1.0
 pydantic==2.7.4
@@ -36,11 +35,13 @@ referencing==0.35.1
 requests==2.32.3
 rich==13.7.1
 rpds-py==0.18.1
+scipy==1.14.0
 six==1.16.0
 smmap==5.0.1
 soupsieve==2.5
 SQLAlchemy==2.0.30
 sqlmodel==0.0.19
+statsmodels==0.14.2
 streamlit==1.35.0
 tenacity==8.3.0
 toml==0.10.2

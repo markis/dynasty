@@ -11,6 +11,7 @@ CURRENT_YEAR = 2024
 SLEEPER_IDS_TO_IGNORE = {
     "4634",  # not "Kenneth Walker III"
     "232",  # not "Frank Gore Jr"
+    "748",  # not "Mike Williams"
 }
 
 
@@ -245,6 +246,7 @@ class SleeperService:
 
         roster_picks: list[str] = []
         if traded_picks:
+            # TODO: year/round should come from the league settings
             next_undrafted_season = CURRENT_YEAR + 1
             roster_picks = [
                 f"{pick['season']} Mid {get_placement(pick['round'])}"
@@ -258,7 +260,7 @@ class SleeperService:
             }
 
             # TODO: year/round should come from the league settings
-            for season in range(CURRENT_YEAR + 1, CURRENT_YEAR + 3):
+            for season in range(next_undrafted_season, next_undrafted_season + 3):
                 for round_ in range(1, 4):
                     pick = f"{season} Mid {get_placement(round_)}"
                     if pick not in lost_picks:

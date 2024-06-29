@@ -5,13 +5,14 @@ from enum import StrEnum
 from typing import Final, Self, TypedDict
 from uuid import UUID
 
-from pydantic.main import BaseModel
+from pydantic import BaseModel
 from sqlalchemy import UniqueConstraint
 from sqlmodel import Field, SQLModel
 
 
 class RankingSet(StrEnum):
     KeepTradeCut = "Keep Trade Cut"
+    DynastyProcess = "Dynasty Process"
 
 
 class LeagueType(StrEnum):
@@ -155,6 +156,7 @@ class PlayerRanking(SQLModel, table=True):
     league_type: LeagueType
     date: date
     value: int
+    ranking_set: RankingSet
     is_pick: bool
 
 

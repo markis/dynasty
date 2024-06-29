@@ -1,11 +1,12 @@
 import logging
-from collections import defaultdict
-from collections.abc import Mapping
-from dataclasses import dataclass
+from collections.abc import Generator
 from uuid import UUID
 
+from tqdm import tqdm
+
 from dynasty.db import Session, create_database, upsert_player_rankings, upsert_players
-from dynasty.models import LeagueType, Player, PlayerRanking
+from dynasty.models import LeagueType, PlayerRanking
+from dynasty.service.dynasty_process import DynastyProcess
 from dynasty.service.keeptradecut import KTCService
 from dynasty.service.sleeper import SleeperService
 
@@ -13,58 +14,61 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class PlayerInfo:
-    player: Player | None
-    ktc_rankings: list[PlayerRanking]
+class PlayerRankingGenerator:
+    player_ids: set[UUID]
 
     def __init__(self) -> None:
-        self.player = None
-        self.ktc_rankings = []
+        self.player_ids = set()
+
+    def __call__(self, *, back_fill: bool) -> Generator[PlayerRanking, None, None]:
+        ranking_count = 0
+        player_ids: set[UUID] = set()
+
+        with KTCService() as ktc_service:
+            for league_type in (LeagueType.Standard, LeagueType.SuperFlex):
+                rankings = (
+                    ktc_service.get_player_full_history(league_type)
+                    if back_fill
+                    else ktc_service.get_rankings(league_type)
+                )
+                for ranking in tqdm(rankings, desc=f"Mapping KTC players ({league_type})"):
+                    player_ids.add(ranking.player_id)
+                    yield ranking
+                    ranking_count += 1
+
+        with DynastyProcess() as dp_service:
+            rankings = dp_service.get_rankings(back_fill=back_fill)
+            for ranking in tqdm(rankings, desc="Mapping Dynasty Process players"):
+                player_ids.add(ranking.player_id)
+                yield ranking
+                ranking_count += 1
+
+        logger.info("Ranking Count: %d", ranking_count)
 
 
-def get_player_map(league_type: LeagueType, *, back_fill: bool) -> Mapping[UUID, PlayerInfo]:
-    player_map: defaultdict[UUID, PlayerInfo] = defaultdict(PlayerInfo)
-
-    with KTCService() as ktc_service:
-        rankings = (
-            ktc_service.get_player_full_history(league_type) if back_fill else ktc_service.get_rankings(league_type)
-        )
-        for ranking in rankings:
-            player_map[ranking.player_id].ktc_rankings.append(ranking)
-
-    with SleeperService() as sleeper_service:
-        for player in sleeper_service.get_players():
-            if player.player_id in player_map:
-                player_map[player.player_id].player = player
-
-    return player_map
-
-
-def import_players(league_type: LeagueType, *, back_fill: bool = False) -> None:
+def import_players(*, back_fill: bool = False) -> None:
     """
     Import player rankings from KeepTradeCut and Sleeper into the database.
     """
     engine = create_database()
-    player_map = get_player_map(league_type, back_fill=back_fill)
-    logger.info("Importing players", extra={"count": len(player_map), "league_type": league_type})
+    logger.info("Importing players")
+
+    rankings = PlayerRankingGenerator()
     with Session(engine) as session:
-        upsert_players(
-            session,
-            [player_info.player for player_info in player_map.values() if player_info.player],
-        )
+        player_rankings = rankings(back_fill=back_fill)
+        upsert_player_rankings(session, player_rankings)
         session.commit()
 
-    with Session(engine) as session:
-        upsert_player_rankings(
-            session,
-            [ranking for player_info in player_map.values() for ranking in player_info.ktc_rankings],
+    with SleeperService() as sleeper_service:
+        players = tqdm(
+            (player for player in sleeper_service.get_players() if player.player_id in rankings.player_ids),
+            desc="Inserting Players",
         )
-        session.commit()
 
-    logger.info("Import complete.")
+        with Session(engine) as session:
+            upsert_players(session, players)
+            session.commit()
 
 
 if __name__ == "__main__":
-    import_players(LeagueType.Standard, back_fill=False)
-    import_players(LeagueType.SuperFlex, back_fill=False)
+    import_players(back_fill=True)

@@ -1,10 +1,12 @@
+from collections.abc import Iterable
+from datetime import UTC, datetime, timedelta
 from os import getenv
 
 from sqlalchemy import Engine, create_engine
 from sqlalchemy.dialects.postgresql import insert
-from sqlmodel import Session, SQLModel
+from sqlmodel import Session, SQLModel, select
 
-from dynasty.models import Player, PlayerRanking
+from dynasty.models import LeagueType, Player, PlayerRanking, RankingSet
 
 PSQL_URL = getenv("PSQL_URL", "")
 
@@ -18,8 +20,8 @@ def create_database(url: str = PSQL_URL) -> Engine:
     return engine
 
 
-def upsert_players(session: Session, players: list[Player]) -> None:
-    for player in players:
+def upsert_players(session: Session, players: Iterable[Player]) -> None:
+    for count, player in enumerate(players):
         stmt = (
             insert(Player)
             .values(
@@ -85,9 +87,12 @@ def upsert_players(session: Session, players: list[Player]) -> None:
         )
         session.exec(stmt)  # type: ignore[call-overload]
 
+        if count % 100 == 0:
+            session.commit()
 
-def upsert_player_rankings(session: Session, player_rankings: list[PlayerRanking]) -> None:
-    for ranking in player_rankings:
+
+def upsert_player_rankings(session: Session, player_rankings: Iterable[PlayerRanking]) -> None:
+    for count, ranking in enumerate(player_rankings):
         stmt = (
             insert(PlayerRanking)
             .values(
@@ -95,11 +100,29 @@ def upsert_player_rankings(session: Session, player_rankings: list[PlayerRanking
                 league_type=ranking.league_type,
                 date=ranking.date,
                 value=ranking.value,
+                ranking_set=ranking.ranking_set,
                 is_pick=ranking.is_pick,
             )
             .on_conflict_do_update(
-                index_elements=["player_id", "league_type", "date"],
+                index_elements=["player_id", "league_type", "date", "ranking_set"],
                 set_={"value": ranking.value},
             )
         )
         session.exec(stmt)  # type: ignore[call-overload]
+
+        if count % 100 == 0:
+            session.commit()
+
+
+def get_player_rankings(session: Session, league_type: LeagueType, ranking_set: RankingSet) -> Iterable[PlayerRanking]:
+    query = (
+        select(PlayerRanking)
+        .where(
+            (PlayerRanking.league_type == league_type)
+            & (PlayerRanking.date > datetime.now(tz=UTC).date() - timedelta(days=365))
+            & (PlayerRanking.ranking_set == ranking_set)
+        )
+        .order_by(PlayerRanking.date)
+    )
+    print(query.compile().statement)
+    return session.exec(query)

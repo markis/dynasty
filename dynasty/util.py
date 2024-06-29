@@ -68,3 +68,7 @@ def get_placement(placement: int) -> str:
     if placement % 10 == rd:
         return f"{placement}rd"
     return f"{placement}th"
+
+
+def convert_date(value: str) -> date:
+    return datetime.strptime(value, "%Y-%m-%d").replace(tzinfo=UTC).date()

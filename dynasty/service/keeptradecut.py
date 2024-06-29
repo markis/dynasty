@@ -8,7 +8,7 @@ from uuid import UUID
 
 from bs4.element import Tag
 
-from dynasty.models import LeagueType, PlayerPosition, PlayerRanking
+from dynasty.models import LeagueType, PlayerPosition, PlayerRanking, RankingSet
 from dynasty.service.soup import SoupService
 from dynasty.util import generate_id
 
@@ -105,6 +105,7 @@ class KTCService:
         if league_type == LeagueType.SuperFlex:
             return PlayerRanking(
                 player_id=generate_id(data["playerName"]),
+                ranking_set=RankingSet.KeepTradeCut,
                 value=data["superflexValues"]["value"],
                 league_type=LeagueType.SuperFlex,
                 date=now,
@@ -112,6 +113,7 @@ class KTCService:
             )
         return PlayerRanking(
             player_id=generate_id(data["playerName"]),
+            ranking_set=RankingSet.KeepTradeCut,
             value=data["oneQBValues"]["value"],
             league_type=LeagueType.Standard,
             date=now,
@@ -196,11 +198,14 @@ class KTCService:
                 err = "Could not find player data on page"
                 raise ValueError(err)
 
+            is_pick = PlayerPosition.from_str(player["position"]) == PlayerPosition.PICK
             player_data: dict[str, list[KTCValue]] = json.loads(data)
             for value in player_data["overallValue"]:
                 yield PlayerRanking(
                     player_id=player_id,
                     value=value["v"],
+                    ranking_set=RankingSet.KeepTradeCut,
                     league_type=league_type,
                     date=datetime.strptime(value["d"], "%Y-%m-%d").replace(tzinfo=UTC).date(),
+                    is_pick=is_pick,
                 )

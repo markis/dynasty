@@ -20,16 +20,20 @@ classifiers = [
   "Programming Language :: Python :: Implementation :: CPython",
 ]
 dependencies = [
-  "requests",
   "beautifulsoup4",
-  "pydantic",
-  "sqlmodel",
-  "streamlit",
-  "psycopg2-binary",
-  "polars",
+  "connectorx",
+  "gitpython",
   "pandas",
   "plotly",
-  "prophet"
+  "polars",
+  "psycopg2-binary",
+  "pydantic",
+  "requests",
+  "scipy",
+  "sqlmodel",
+  "statsmodels",
+  "streamlit",
+  "tqdm",
 ]
 
 [project.urls]

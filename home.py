@@ -6,11 +6,16 @@ from typing import Final, NamedTuple
 import plotly.express as px
 import polars as pl
 import streamlit as st
+from scipy.stats import linregress
+from sqlmodel import Session
 
+from dynasty.db import create_database, get_player_rankings
 from dynasty.models import League, LeagueType, RankingSet, Roster
 from dynasty.service.sleeper import SleeperService
 from dynasty.util import generate_id
 
+DOWN_TREND: Final[float] = -0.5
+UP_TREND: Final[float] = 0.5
 POSITIONS: Final[Iterable[str]] = ("QB", "RB", "WR", "TE")
 POSITIONS_WITH_PICK: Final[Iterable[str]] = (*POSITIONS, "PICK")
 DATA_DIR: Final[Path] = Path(__file__).resolve().parent.joinpath("data")
@@ -64,13 +69,13 @@ def get_rosters_df(league_id: str, _players_df: pl.DataFrame, *, include_picks: 
     rosters_df = pl.DataFrame(arr, schema={"owner_name": pl.String, "sleeper_id": pl.String, "is_starter": pl.Boolean})
     rosters_df = rosters_df.join(_players_df, on="sleeper_id", how="full", coalesce=True)
 
+    if not include_picks:
+        return rosters_df
+
     # get value by player_id from players_df
     _player_vals_by_id = {
         player_id: value for player_id, value in _players_df.select(["player_id", "value"]).rows() if value is not None
     }
-
-    if not include_picks:
-        return rosters_df
 
     def get_pick_row(roster_name: str, pick: str) -> tuple[str, str, str, str, int]:
         player_id = str(generate_id(pick))
@@ -94,9 +99,37 @@ def get_rosters_df(league_id: str, _players_df: pl.DataFrame, *, include_picks: 
 def get_rankings(
     league_type: LeagueType, _players_df: pl.DataFrame, ranking_set: RankingSet = RankingSet.KeepTradeCut
 ) -> pl.DataFrame:
-    rankings_df = pl.read_csv(
-        DATA_DIR / f"{ranking_set.name.lower()}-{league_type.value.lower()}.csv",
-        schema={"player_id": pl.String, "date": pl.Date, "value": pl.Int64},
+    import os
+
+    if psql_url := os.getenv("PSQL_URL"):
+        engine = create_database(psql_url)
+
+        with Session(engine) as session:
+            rankings = get_player_rankings(session, league_type, ranking_set)
+            rankings = (
+                (str(ranking.player_id), ranking.date, ranking.value)
+                for ranking in rankings
+                if ranking.ranking_set == ranking_set
+            )
+            rankings_df = pl.DataFrame(
+                rankings,
+                schema={"player_id": pl.String, "date": pl.Date, "value": pl.Int64},
+            )
+    else:
+        rankings_df = pl.read_csv(
+            DATA_DIR / f"{ranking_set.name.lower()}-{league_type.value.lower()}.csv",
+            schema={"player_id": pl.String, "date": pl.Date, "value": pl.Int64},
+        )
+    rankings_df = (
+        rankings_df.group_by("player_id")
+        .agg(pl.col("value").last().alias("value"), pl.col("value").explode().alias("value_history"))
+        .sort("value", descending=True, nulls_last=True)
+    )
+    rankings_df = rankings_df.with_columns(
+        pl.Series(
+            "trend",
+            values=determine_trend(rankings_df["value_history"].to_numpy()),
+        ),
     )
     return rankings_df.join(_players_df, on="player_id", how="full", coalesce=True)
 
@@ -114,8 +147,12 @@ def get_players() -> pl.DataFrame:
     )
 
 
-def get_league_values(roster_df: pl.DataFrame, *, only_starters: bool = False) -> pl.DataFrame:
-    pass
+def determine_trend(value_history: Sequence[Sequence[float]]) -> Sequence[float]:
+    """Determine the trend of the value history"""
+    return [
+        result.slope if isinstance(result.slope, float) else 0
+        for result in (linregress(range(len(nums)), nums) for nums in value_history)
+    ]
 
 
 def init() -> None:
@@ -140,7 +177,6 @@ def get_user_input() -> UserInput | None:
         key="league",
         format_func=get_league_name,
     )
-
     if not league:
         return
 
@@ -149,9 +185,33 @@ def get_user_input() -> UserInput | None:
         rankings_set = RankingSet.KeepTradeCut
 
     starters_only = st.sidebar.checkbox("Starters Only", key="starters_only")
-    include_picks = st.sidebar.checkbox("Include Picks", key="include_picks", value=True)
+    include_picks = st.sidebar.checkbox(
+        "Include Picks", key="include_picks", value=not starters_only, disabled=starters_only
+    )
 
     return UserInput(owner_id, league, rankings_set, starters_only, include_picks)
+
+
+# def forecast_values(value_history: Sequence[Sequence[int]], days: int = 30) -> Sequence[Sequence[float]]:
+#     """Forecast future values using Prophet model"""
+#
+#     forecasts: list[Sequence[float]] = []
+#
+#     for history in value_history:
+#         if len(history) <= 1:
+#             forecasts.append([])
+#             continue
+#
+#         try:
+#             model = ARIMA(history, order=(days, 1, 0))  # You can tune the order parameters
+#             model_fit = model.fit()
+#             forecast = model_fit.forecast(steps=days)
+#             forecasts.append(forecast)
+#         except Exception as e:
+#             forecasts.append([])
+#             print(history)
+#
+#     return forecasts
 
 
 def render(user_input: UserInput) -> None:
@@ -170,9 +230,9 @@ def render(user_input: UserInput) -> None:
 
     players_df = get_players()
     rankings_df = get_rankings(league.league_type, players_df, user_input.rankings_set)
-    latest_rankings_df = rankings_df.group_by("player_id").agg(pl.all().last())
+
     roster_df = (
-        get_rosters_df(league.id, latest_rankings_df, include_picks=include_picks)
+        get_rosters_df(league.id, rankings_df, include_picks=include_picks)
         .join(players_df, on="player_id", how="full", coalesce=True, suffix="_new")
         .with_columns(
             pl.when(pl.col("position").is_null())
@@ -184,91 +244,97 @@ def render(user_input: UserInput) -> None:
             .otherwise(pl.col("full_name"))
             .alias("full_name"),
         )
-        .select(["owner_name", "player_id", "sleeper_id", "full_name", "position", "is_starter", "value"])
-        .filter(pl.col("owner_name").is_not_null())
-        .sort("value", descending=True)
+        .select(
+            "owner_name",
+            "player_id",
+            "sleeper_id",
+            "full_name",
+            "position",
+            "is_starter",
+            "value",
+            "trend",
+            "value_history",
+        )
+        .filter(pl.col("full_name").is_not_null())
+        .sort("value", descending=True, nulls_last=True)
     )
+
     if starters_only:
         roster_df = roster_df.filter(pl.col("is_starter"))
 
-    league_values = roster_df.group_by("owner_name").agg(pl.col("value").sum().alias("value"))
-
-    owner_pos_values = (
-        roster_df.group_by(["owner_name", "position"])
-        .agg(pl.col("value").sum())
-        .pivot(index="owner_name", columns="position", values="value")
-    )
-
     league_values = (
-        league_values.join(owner_pos_values, on="owner_name", how="left", coalesce=True)
-        .select(["owner_name", "value", *positions])
-        .sort("value", descending=True)
+        roster_df.filter(pl.col("owner_name").is_not_null())
+        .group_by("owner_name")
+        .agg(pl.col("value").sum().alias("value"))
+        .join(
+            roster_df.group_by("owner_name", "position")
+            .agg(pl.col("value").sum())
+            .pivot(index="owner_name", columns="position", values="value"),
+            on="owner_name",
+            how="left",
+            coalesce=True,
+        )
+        .select(pl.col(["owner_name", "value", *positions]))
+        .sort("value", descending=True, nulls_last=True)
     )
-    league_values_long_df = league_values.select(("owner_name", *positions)).melt(
+
+    # Melt the DataFrame for plotting
+    league_values_long_df = league_values.select(pl.col(["owner_name", *positions])).melt(
         id_vars="owner_name", value_vars=positions, variable_name="position", value_name="value"
     )
 
+    # Plot the data using plotly
     _ = st.plotly_chart(
         px.bar(league_values_long_df, x="owner_name", y="value", color="position"), use_container_width=True
     )
+
+    # Display the original DataFrame
     _ = st.dataframe(league_values, hide_index=True, use_container_width=True)
 
     # Get list of lower case owner names
     owners = sorted((str(name) for name in league_values["owner_name"].unique()), key=lambda x: x.lower())
     for owner in owners:
         expander = st.expander(f"{owner} Roster", expanded=False)
+        owner_roster_df = roster_df.filter(pl.col("owner_name") == owner)
+
         for pos, col in zip(positions, expander.columns(len(positions)), strict=False):
             _ = col.markdown(f"#### {pos}")
-            group_by_pos = roster_df.filter(pl.col("owner_name") == owner, pl.col("position") == pos).select(
-                ("full_name", "value")
-            )
+            group_by_pos = owner_roster_df.filter(pl.col("position") == pos).select(("full_name", "value"))
             _ = col.dataframe(group_by_pos, use_container_width=True, hide_index=True)
 
-        group_by_pos = roster_df.filter(pl.col("position").is_in(POSITIONS), pl.col("owner_name") == owner).select(
-            ("full_name", "position", "value")
-        )
-        joined_df = rankings_df.filter(pl.col("full_name").is_in(group_by_pos["full_name"])).join(
-            group_by_pos, on="full_name", how="full", coalesce=True
-        )
-        result_df = (
-            joined_df.group_by("full_name")
-            .agg(pl.col("value").last().alias("value"), pl.col("value").explode().alias("value_history"))
-            .sort("value", descending=True)
-        )
-
         _ = expander.dataframe(
-            result_df,
+            owner_roster_df.select("full_name", "position", "value", "trend", "value_history"),
             column_config={
                 "full_name": st.column_config.Column("Player", width="small"),
+                "position": st.column_config.Column("Position", width="small"),
                 "value": st.column_config.Column("Value", width="small"),
+                "trend": st.column_config.Column("Trend", width="small"),
                 "value_history": st.column_config.AreaChartColumn("Value History", width="large"),
             },
             use_container_width=True,
             hide_index=True,
         )
 
-    fa_names = (
-        get_rosters_df(league.id, latest_rankings_df, include_picks=include_picks)
+    fa_rankings_df = (
+        get_rosters_df(league.id, rankings_df, include_picks=include_picks)
         .filter(pl.col("owner_name").is_null(), pl.col("value").is_not_null(), pl.col("position").is_in(POSITIONS))
-        .select("full_name")
-    )
-    fa_joined_df = rankings_df.filter(pl.col("full_name").is_in(fa_names["full_name"])).join(
-        fa_names, on="full_name", how="full", coalesce=True
-    )
-    fa_result_df = (
-        fa_joined_df.group_by("full_name", "position")
-        .agg(pl.col("value").last().alias("value"), pl.col("value").explode().alias("value_history"))
-        .sort("value", descending=True)
+        .sort("value", descending=True, nulls_last=True)
     )
     _ = st.markdown("## Free Agents")
     _ = st.dataframe(
-        fa_result_df,
+        fa_rankings_df,
         column_config={
             "full_name": st.column_config.Column("Player", width="small"),
             "position": st.column_config.Column("Position", width="small"),
             "value": st.column_config.Column("Value", width="small"),
+            "trend": st.column_config.Column("Trend", width="small"),
             "value_history": st.column_config.AreaChartColumn("Value History", width="large"),
+            "owner_name": None,
+            "sleeper_id": None,
+            "is_starter": None,
+            "player_id": None,
         },
+        column_order=("full_name", "position", "value", "trend", "value_history"),
         hide_index=True,
         use_container_width=True,
     )
