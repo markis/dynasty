@@ -120,9 +120,8 @@ def get_player_rankings(session: Session, league_type: LeagueType, ranking_set: 
         .where(
             (PlayerRanking.league_type == league_type)
             & (PlayerRanking.date > datetime.now(tz=UTC).date() - timedelta(days=365))
-            & (PlayerRanking.ranking_set == ranking_set)
+            & (PlayerRanking.ranking_set == ranking_set.value)
         )
         .order_by(PlayerRanking.date)
     )
-    print(query.compile().statement)
     return session.exec(query)

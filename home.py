@@ -56,7 +56,9 @@ def get_rosters(league_id: str) -> Sequence[Roster]:
 
 
 @st.cache_data(ttl=300)
-def get_rosters_df(league_id: str, _players_df: pl.DataFrame, *, include_picks: bool) -> pl.DataFrame:
+def get_rosters_df(
+    league_id: str, ranking_set: RankingSet, _players_df: pl.DataFrame, *, include_picks: bool
+) -> pl.DataFrame:
     def is_starter(roster: Roster, sleeper_id: int) -> bool:
         return sleeper_id in roster.starters
 
@@ -96,9 +98,7 @@ def get_rosters_df(league_id: str, _players_df: pl.DataFrame, *, include_picks: 
 
 
 @st.cache_data(ttl=300)
-def get_rankings(
-    league_type: LeagueType, _players_df: pl.DataFrame, ranking_set: RankingSet = RankingSet.KeepTradeCut
-) -> pl.DataFrame:
+def get_rankings(league_type: LeagueType, ranking_set: RankingSet, _players_df: pl.DataFrame) -> pl.DataFrame:
     import os
 
     if psql_url := os.getenv("PSQL_URL"):
@@ -147,7 +147,7 @@ def get_players() -> pl.DataFrame:
     )
 
 
-def determine_trend(value_history: Sequence[Sequence[float]]) -> Sequence[float]:
+def determine_trend(value_history: Sequence[Sequence[float]]) -> Iterable[float]:
     """Determine the trend of the value history"""
     return [
         result.slope if isinstance(result.slope, float) else 0
@@ -180,9 +180,10 @@ def get_user_input() -> UserInput | None:
     if not league:
         return
 
-    rankings_set = st.sidebar.selectbox("Rankings Set", [RankingSet.KeepTradeCut])
-    if not rankings_set:
-        rankings_set = RankingSet.KeepTradeCut
+    rankings_set = (
+        st.sidebar.selectbox("Rankings Set", [RankingSet.KeepTradeCut, RankingSet.DynastyProcess], key="rankings_set")
+        or RankingSet.KeepTradeCut
+    )
 
     starters_only = st.sidebar.checkbox("Starters Only", key="starters_only")
     include_picks = st.sidebar.checkbox(
@@ -215,7 +216,8 @@ def get_user_input() -> UserInput | None:
 
 
 def render(user_input: UserInput) -> None:
-    owner_id, league, _, starters_only, include_picks = user_input
+    owner_id, league, ranking_set, starters_only, include_picks = user_input
+    prog = st.progress(0)
     positions: Sequence[str] = POSITIONS_WITH_PICK if include_picks and not starters_only else POSITIONS
     _ = st.header(league.name)
     details = st.expander("League Info", expanded=False)
@@ -229,10 +231,12 @@ def render(user_input: UserInput) -> None:
     )
 
     players_df = get_players()
-    rankings_df = get_rankings(league.league_type, players_df, user_input.rankings_set)
+    _ = prog.progress(33)
+    rankings_df = get_rankings(league.league_type, ranking_set, players_df)
+    _ = prog.progress(66)
 
     roster_df = (
-        get_rosters_df(league.id, rankings_df, include_picks=include_picks)
+        get_rosters_df(league.id, ranking_set, rankings_df, include_picks=include_picks)
         .join(players_df, on="player_id", how="full", coalesce=True, suffix="_new")
         .with_columns(
             pl.when(pl.col("position").is_null())
@@ -265,7 +269,7 @@ def render(user_input: UserInput) -> None:
     league_values = (
         roster_df.filter(pl.col("owner_name").is_not_null())
         .group_by("owner_name")
-        .agg(pl.col("value").sum().alias("value"))
+        .agg(pl.col("value").sum().alias("value"), pl.col("trend").mean().alias("trend"))
         .join(
             roster_df.group_by("owner_name", "position")
             .agg(pl.col("value").sum())
@@ -274,7 +278,7 @@ def render(user_input: UserInput) -> None:
             how="left",
             coalesce=True,
         )
-        .select(pl.col(["owner_name", "value", *positions]))
+        .select(pl.col(["owner_name", "value", "trend", *positions]))
         .sort("value", descending=True, nulls_last=True)
     )
 
@@ -283,13 +287,25 @@ def render(user_input: UserInput) -> None:
         id_vars="owner_name", value_vars=positions, variable_name="position", value_name="value"
     )
 
+    _ = prog.progress(100)
+    _ = prog.empty()
+
     # Plot the data using plotly
     _ = st.plotly_chart(
         px.bar(league_values_long_df, x="owner_name", y="value", color="position"), use_container_width=True
     )
 
     # Display the original DataFrame
-    _ = st.dataframe(league_values, hide_index=True, use_container_width=True)
+    _ = st.dataframe(
+        league_values,
+        column_config={
+            "full_name": st.column_config.Column("Player", width="small"),
+            "value": st.column_config.NumberColumn("Value", format="%d", width="small"),
+            "trend": st.column_config.NumberColumn("Trend", format="%.2f", width="small"),
+        },
+        hide_index=True,
+        use_container_width=True,
+    )
 
     # Get list of lower case owner names
     owners = sorted((str(name) for name in league_values["owner_name"].unique()), key=lambda x: x.lower())
@@ -307,8 +323,8 @@ def render(user_input: UserInput) -> None:
             column_config={
                 "full_name": st.column_config.Column("Player", width="small"),
                 "position": st.column_config.Column("Position", width="small"),
-                "value": st.column_config.Column("Value", width="small"),
-                "trend": st.column_config.Column("Trend", width="small"),
+                "value": st.column_config.NumberColumn("Value", format="%d", width="small"),
+                "trend": st.column_config.NumberColumn("Trend", format="%.2f", width="small"),
                 "value_history": st.column_config.AreaChartColumn("Value History", width="large"),
             },
             use_container_width=True,
@@ -316,7 +332,7 @@ def render(user_input: UserInput) -> None:
         )
 
     fa_rankings_df = (
-        get_rosters_df(league.id, rankings_df, include_picks=include_picks)
+        get_rosters_df(league.id, ranking_set, rankings_df, include_picks=include_picks)
         .filter(pl.col("owner_name").is_null(), pl.col("value").is_not_null(), pl.col("position").is_in(POSITIONS))
         .sort("value", descending=True, nulls_last=True)
     )
@@ -326,8 +342,8 @@ def render(user_input: UserInput) -> None:
         column_config={
             "full_name": st.column_config.Column("Player", width="small"),
             "position": st.column_config.Column("Position", width="small"),
-            "value": st.column_config.Column("Value", width="small"),
-            "trend": st.column_config.Column("Trend", width="small"),
+            "value": st.column_config.NumberColumn("Value", format="%d", width="small"),
+            "trend": st.column_config.NumberColumn("Trend", format="%.2f", width="small"),
             "value_history": st.column_config.AreaChartColumn("Value History", width="large"),
             "owner_name": None,
             "sleeper_id": None,

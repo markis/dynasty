@@ -1,4 +1,4 @@
-FROM python:3.12-slim as runtime
+FROM python:3.12-slim AS runtime
 WORKDIR /src
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
   PIP_DISABLE_ROOT_WARNING=1 \
