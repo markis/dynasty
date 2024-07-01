@@ -46,7 +46,7 @@ def get_leagues(sleeper_username: str) -> tuple[str, list[League]]:
         if not leagues:
             return "", []
 
-        return sleeper_id, leagues
+        return sleeper_id, list(leagues)
 
 
 @st.cache_data(ttl=300)
@@ -105,11 +105,9 @@ def get_rankings(league_type: LeagueType, ranking_set: RankingSet, _players_df: 
         engine = create_database(psql_url)
 
         with Session(engine) as session:
-            rankings = get_player_rankings(session, league_type, ranking_set)
             rankings = (
                 (str(ranking.player_id), ranking.date, ranking.value)
-                for ranking in rankings
-                if ranking.ranking_set == ranking_set
+                for ranking in get_player_rankings(session, league_type, ranking_set)
             )
             rankings_df = pl.DataFrame(
                 rankings,
@@ -128,7 +126,7 @@ def get_rankings(league_type: LeagueType, ranking_set: RankingSet, _players_df: 
     rankings_df = rankings_df.with_columns(
         pl.Series(
             "trend",
-            values=determine_trend(rankings_df["value_history"].to_numpy()),
+            values=determine_trend(rankings_df["value_history"].to_list()),
         ),
     )
     return rankings_df.join(_players_df, on="player_id", how="full", coalesce=True)
@@ -271,9 +269,11 @@ def render(user_input: UserInput) -> None:
         .group_by("owner_name")
         .agg(pl.col("value").sum().alias("value"), pl.col("trend").mean().alias("trend"))
         .join(
-            roster_df.group_by("owner_name", "position")
-            .agg(pl.col("value").sum())
-            .pivot(index="owner_name", columns="position", values="value"),
+            other=(
+                roster_df.group_by("owner_name", "position")
+                .agg(pl.col("value").sum())
+                .pivot(index="owner_name", columns="position", values="value")
+            ),
             on="owner_name",
             how="left",
             coalesce=True,
@@ -282,7 +282,6 @@ def render(user_input: UserInput) -> None:
         .sort("value", descending=True, nulls_last=True)
     )
 
-    # Melt the DataFrame for plotting
     league_values_long_df = league_values.select(pl.col(["owner_name", *positions])).melt(
         id_vars="owner_name", value_vars=positions, variable_name="position", value_name="value"
     )
@@ -290,24 +289,22 @@ def render(user_input: UserInput) -> None:
     _ = prog.progress(100)
     _ = prog.empty()
 
-    # Plot the data using plotly
     _ = st.plotly_chart(
         px.bar(league_values_long_df, x="owner_name", y="value", color="position"), use_container_width=True
     )
 
-    # Display the original DataFrame
     _ = st.dataframe(
         league_values,
         column_config={
             "full_name": st.column_config.Column("Player", width="small"),
-            "value": st.column_config.NumberColumn("Value", format="%d", width="small"),
+            "value": st.column_config.NumberColumn("Value", width="small"),
             "trend": st.column_config.NumberColumn("Trend", format="%.2f", width="small"),
+            **{pos: st.column_config.NumberColumn(pos, width="small") for pos in positions},
         },
         hide_index=True,
         use_container_width=True,
     )
 
-    # Get list of lower case owner names
     owners = sorted((str(name) for name in league_values["owner_name"].unique()), key=lambda x: x.lower())
     for owner in owners:
         expander = st.expander(f"{owner} Roster", expanded=False)
@@ -323,7 +320,7 @@ def render(user_input: UserInput) -> None:
             column_config={
                 "full_name": st.column_config.Column("Player", width="small"),
                 "position": st.column_config.Column("Position", width="small"),
-                "value": st.column_config.NumberColumn("Value", format="%d", width="small"),
+                "value": st.column_config.NumberColumn("Value", width="small"),
                 "trend": st.column_config.NumberColumn("Trend", format="%.2f", width="small"),
                 "value_history": st.column_config.AreaChartColumn("Value History", width="large"),
             },
@@ -342,7 +339,7 @@ def render(user_input: UserInput) -> None:
         column_config={
             "full_name": st.column_config.Column("Player", width="small"),
             "position": st.column_config.Column("Position", width="small"),
-            "value": st.column_config.NumberColumn("Value", format="%d", width="small"),
+            "value": st.column_config.NumberColumn("Value", width="small"),
             "trend": st.column_config.NumberColumn("Trend", format="%.2f", width="small"),
             "value_history": st.column_config.AreaChartColumn("Value History", width="large"),
             "owner_name": None,
@@ -358,6 +355,5 @@ def render(user_input: UserInput) -> None:
 
 if __name__ == "__main__":
     init()
-    user_input = get_user_input()
-    if user_input:
+    if user_input := get_user_input():
         render(user_input)

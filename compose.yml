@@ -8,7 +8,7 @@ services:
     volumes:
       - /opt/dynastyprocess-data/:/Users/markis/src/dynastyprocess-data/
     entrypoint: ["python", "-m"]
-    command: ["dynasty"]
+    command: ["dynasty.import"]
 
   app:
     image: markis/dynasty

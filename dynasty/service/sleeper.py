@@ -281,31 +281,25 @@ class SleeperService:
         url = f"{self.BASE_URL}/players/nfl"
         page = self.session.get(url)
         sleeper_players: Mapping[str, SleeperPlayerDict] = page.json()
-
-        for sleeper_id, player_dict in sleeper_players.items():
-            player = self.convert_player_data(sleeper_id, player_dict)
-            if player:
-                yield player
+        return (
+            player
+            for sleeper_id, player_dict in sleeper_players.items()
+            if (player := self.convert_player_data(sleeper_id, player_dict))
+        )
 
     def get_sleeper_id(self, username: str) -> str | None:
         url = f"{self.BASE_URL}/user/{username}/"
         page = self.session.get(url)
-        user: dict[str, str] | None = page.json()
-        if not user:
-            return None
-        return user["user_id"]
+        user: dict[str, str] | None
+        if user := page.json():
+            return user["user_id"]
+        return None
 
-    def get_leagues(self, user_id: str) -> list[League]:
+    def get_leagues(self, user_id: str) -> Iterable[League]:
         url = f"{self.BASE_URL}/user/{user_id}/leagues/nfl/{CURRENT_YEAR}"
         page = self.session.get(url)
         leagues: list[SleeperLeagueDict] = page.json()
-        result: list[League] = []
-        for league_dict in leagues:
-            league = self.convert_league_data(league_dict)
-            if league:
-                result.append(league)
-
-        return result
+        return (league for league_dict in leagues if (league := self.convert_league_data(league_dict)))
 
     def get_rosters(self, league_id: str, *, include_picks: bool = True) -> Sequence[Roster]:
         url = f"{self.BASE_URL}/league/{league_id}/rosters"

@@ -89,6 +89,7 @@ def upsert_players(session: Session, players: Iterable[Player]) -> None:
 
         if count % 100 == 0:
             session.commit()
+    session.commit()
 
 
 def upsert_player_rankings(session: Session, player_rankings: Iterable[PlayerRanking]) -> None:
@@ -112,6 +113,7 @@ def upsert_player_rankings(session: Session, player_rankings: Iterable[PlayerRan
 
         if count % 100 == 0:
             session.commit()
+    session.commit()
 
 
 def get_player_rankings(session: Session, league_type: LeagueType, ranking_set: RankingSet) -> Iterable[PlayerRanking]:

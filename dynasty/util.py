@@ -1,8 +1,10 @@
 import re
-from collections.abc import Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from datetime import UTC, date, datetime
-from typing import Final, overload
+from typing import Final, TypeVar, overload, override
 from uuid import UUID, uuid5
+
+T = TypeVar("T")
 
 REMOVE: Final = re.compile(r"\bjr\.?|\bsr\.?|\biv|\biii|\bii")
 REPLACE: Final = re.compile(r"\'|\"|\s+")
@@ -72,3 +74,23 @@ def get_placement(placement: int) -> str:
 
 def convert_date(value: str) -> date:
     return datetime.strptime(value, "%Y-%m-%d").replace(tzinfo=UTC).date()
+
+
+class SideEffect(Iterable[T]):
+    """
+    A class that allows for a side effect to be applied to each item in an iterable.
+
+    This is useful for tracking the items being processed in a generator.
+    """
+
+    side_effect: Callable[[T], None]
+
+    def __init__(self, iterable: Iterable[T], side_effect: Callable[[T], None]) -> None:
+        self.iterable = iterable
+        self.side_effect = side_effect
+
+    @override
+    def __iter__(self) -> Iterator[T]:
+        for item in self.iterable:
+            self.side_effect(item)
+            yield item

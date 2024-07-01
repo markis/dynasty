@@ -141,7 +141,14 @@ class KTCService:
                 return data.rstrip(";")
         return None
 
-    def get_rankings(self, league_type: LeagueType) -> Iterable[PlayerRanking]:
+    def get_rankings(self, *, back_fill: bool) -> Iterable[PlayerRanking]:
+        for league_type in (LeagueType.SuperFlex, LeagueType.Standard):
+            if back_fill:
+                yield from self.get_player_full_history(league_type)
+            else:
+                yield from self.get_todays_rankings(league_type)
+
+    def get_todays_rankings(self, league_type: LeagueType) -> Iterable[PlayerRanking]:
         """
         Get player rankings from KeepTradeCut.
 
@@ -154,25 +161,13 @@ class KTCService:
             err = "Could not find player data on page"
             raise ValueError(err)
 
-        id_list: list[UUID] = []
         today = datetime.now(UTC).date()
         json_data: list[KTCPlayerData] = json.loads(data)
         for player_data in json_data:
             try:
-                ranking = self.convert_player_data(player_data, league_type=league_type, now=today)
-                self.check_duplicate_player(ranking, id_list)
-
-                id_list.append(ranking.player_id)
-                yield ranking
+                yield self.convert_player_data(player_data, league_type=league_type, now=today)
             except (ValueError, TypeError, IndexError) as e:
                 logger.debug("Error processing player data: %s, player_data: %s", e, player_data)
-
-    @staticmethod
-    def check_duplicate_player(ranking: PlayerRanking, id_list: list[UUID]) -> None:
-        """Check if a player is already in the list of player ids."""
-        if ranking.player_id in id_list:
-            err = f"Duplicate player ID found: {ranking.player_id}"
-            raise ValueError(err)
 
     def get_player_full_history(self, league_type: LeagueType) -> Iterable[PlayerRanking]:
         """
@@ -193,7 +188,9 @@ class KTCService:
             player_id: UUID = generate_id(player["playerName"])
 
             player_url: str = f"{PLAYER_URL}{player_slug}"
-            data = self._get_data_from_page(player_url, "playerOneQB")
+            variable = "playerOneQB" if league_type == LeagueType.Standard else "playerSuperflex"
+
+            data = self._get_data_from_page(player_url, variable)
             if data is None:
                 err = "Could not find player data on page"
                 raise ValueError(err)
