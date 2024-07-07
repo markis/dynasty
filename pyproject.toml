@@ -28,6 +28,7 @@ dependencies = [
   "polars",
   "psycopg2-binary",
   "pydantic",
+  "pygithub",
   "requests",
   "scipy",
   "sqlmodel",

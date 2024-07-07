@@ -124,6 +124,6 @@ def get_player_rankings(session: Session, league_type: LeagueType, ranking_set: 
             & (PlayerRanking.date > datetime.now(tz=UTC).date() - timedelta(days=365))
             & (PlayerRanking.ranking_set == ranking_set.value)
         )
-        .order_by(PlayerRanking.date)
+        .order_by(PlayerRanking.__table__.c.player_id, PlayerRanking.__table__.c.date)
     )
     return session.exec(query)

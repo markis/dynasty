@@ -7,7 +7,7 @@ from uuid import UUID
 
 from pydantic import BaseModel
 from sqlalchemy import UniqueConstraint
-from sqlmodel import Field, SQLModel
+from sqlmodel import Field, SQLModel, Table
 
 
 class RankingSet(StrEnum):
@@ -150,6 +150,7 @@ class Player(SQLModel, table=True):
 
 
 class PlayerRanking(SQLModel, table=True):
+    __table__: Table
     __table_args__ = (UniqueConstraint("player_id", "league_type", "date"),)
     id: int | None = Field(default=None, primary_key=True)
     player_id: UUID = Field(default=None, foreign_key="player.player_id")

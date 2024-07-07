@@ -3,6 +3,7 @@ from pathlib import Path
 from textwrap import dedent
 from typing import Final, NamedTuple
 
+import numpy as np
 import plotly.express as px
 import polars as pl
 import streamlit as st
@@ -14,11 +15,14 @@ from dynasty.models import League, LeagueType, RankingSet, Roster
 from dynasty.service.sleeper import SleeperService
 from dynasty.util import generate_id
 
-DOWN_TREND: Final[float] = -0.5
-UP_TREND: Final[float] = 0.5
 POSITIONS: Final[Iterable[str]] = ("QB", "RB", "WR", "TE")
 POSITIONS_WITH_PICK: Final[Iterable[str]] = (*POSITIONS, "PICK")
 DATA_DIR: Final[Path] = Path(__file__).resolve().parent.joinpath("data")
+
+HELP_TEXT_TREND: Final[str] = """
+Trend is the slope of the linear regression based on the value history.
+A positive trend indicates an increasing value, while a negative trend indicates a decreasing value.
+"""
 
 
 class UserInput(NamedTuple):
@@ -55,7 +59,6 @@ def get_rosters(league_id: str) -> Sequence[Roster]:
         return sleeper.get_rosters(league_id)
 
 
-@st.cache_data(ttl=300)
 def get_rosters_df(
     league_id: str, ranking_set: RankingSet, _players_df: pl.DataFrame, *, include_picks: bool
 ) -> pl.DataFrame:
@@ -98,7 +101,7 @@ def get_rosters_df(
 
 
 @st.cache_data(ttl=300)
-def get_rankings(league_type: LeagueType, ranking_set: RankingSet, _players_df: pl.DataFrame) -> pl.DataFrame:
+def get_rankings(league_type: LeagueType, ranking_set: RankingSet) -> pl.DataFrame:
     import os
 
     if psql_url := os.getenv("PSQL_URL"):
@@ -109,15 +112,21 @@ def get_rankings(league_type: LeagueType, ranking_set: RankingSet, _players_df: 
                 (str(ranking.player_id), ranking.date, ranking.value)
                 for ranking in get_player_rankings(session, league_type, ranking_set)
             )
-            rankings_df = pl.DataFrame(
+            return pl.DataFrame(
                 rankings,
                 schema={"player_id": pl.String, "date": pl.Date, "value": pl.Int64},
             )
     else:
-        rankings_df = pl.read_csv(
+        return pl.read_csv(
             DATA_DIR / f"{ranking_set.name.lower()}-{league_type.value.lower()}.csv",
             schema={"player_id": pl.String, "date": pl.Date, "value": pl.Int64},
         )
+
+
+def get_players_and_rankings(
+    league_type: LeagueType, ranking_set: RankingSet, _players_df: pl.DataFrame
+) -> pl.DataFrame:
+    rankings_df = get_rankings(league_type, ranking_set)
     rankings_df = (
         rankings_df.group_by("player_id")
         .agg(pl.col("value").last().alias("value"), pl.col("value").explode().alias("value_history"))
@@ -126,13 +135,12 @@ def get_rankings(league_type: LeagueType, ranking_set: RankingSet, _players_df: 
     rankings_df = rankings_df.with_columns(
         pl.Series(
             "trend",
-            values=determine_trend(rankings_df["value_history"].to_list()),
+            values=determine_trend(rankings_df["value_history"]),
         ),
     )
     return rankings_df.join(_players_df, on="player_id", how="full", coalesce=True)
 
 
-@st.cache_data(ttl=300)
 def get_players() -> pl.DataFrame:
     with SleeperService() as sleeper:
         players = sleeper.get_players()
@@ -145,11 +153,12 @@ def get_players() -> pl.DataFrame:
     )
 
 
-def determine_trend(value_history: Sequence[Sequence[float]]) -> Iterable[float]:
+def determine_trend(value_history: Iterable[Sequence[float]]) -> Iterable[float]:
     """Determine the trend of the value history"""
+
     return [
         result.slope if isinstance(result.slope, float) else 0
-        for result in (linregress(range(len(nums)), nums) for nums in value_history)
+        for result in (linregress(np.arange(len(nums)), nums) for nums in value_history)
     ]
 
 
@@ -228,10 +237,11 @@ def render(user_input: UserInput) -> None:
         """)
     )
 
+    _ = prog.progress(10)
     players_df = get_players()
-    _ = prog.progress(33)
-    rankings_df = get_rankings(league.league_type, ranking_set, players_df)
-    _ = prog.progress(66)
+    _ = prog.progress(50)
+    rankings_df = get_players_and_rankings(league.league_type, ranking_set, players_df)
+    _ = prog.progress(80)
 
     roster_df = (
         get_rosters_df(league.id, ranking_set, rankings_df, include_picks=include_picks)
@@ -298,7 +308,7 @@ def render(user_input: UserInput) -> None:
         column_config={
             "full_name": st.column_config.Column("Player", width="small"),
             "value": st.column_config.NumberColumn("Value", width="small"),
-            "trend": st.column_config.NumberColumn("Trend", format="%.2f", width="small"),
+            "trend": st.column_config.NumberColumn("Trend", format="%.2f", width="small", help=HELP_TEXT_TREND),
             **{pos: st.column_config.NumberColumn(pos, width="small") for pos in positions},
         },
         hide_index=True,
@@ -321,7 +331,7 @@ def render(user_input: UserInput) -> None:
                 "full_name": st.column_config.Column("Player", width="small"),
                 "position": st.column_config.Column("Position", width="small"),
                 "value": st.column_config.NumberColumn("Value", width="small"),
-                "trend": st.column_config.NumberColumn("Trend", format="%.2f", width="small"),
+                "trend": st.column_config.NumberColumn("Trend", format="%.2f", width="small", help=HELP_TEXT_TREND),
                 "value_history": st.column_config.AreaChartColumn("Value History", width="large"),
             },
             use_container_width=True,
@@ -340,7 +350,7 @@ def render(user_input: UserInput) -> None:
             "full_name": st.column_config.Column("Player", width="small"),
             "position": st.column_config.Column("Position", width="small"),
             "value": st.column_config.NumberColumn("Value", width="small"),
-            "trend": st.column_config.NumberColumn("Trend", format="%.2f", width="small"),
+            "trend": st.column_config.NumberColumn("Trend", format="%.2f", width="small", help=HELP_TEXT_TREND),
             "value_history": st.column_config.AreaChartColumn("Value History", width="large"),
             "owner_name": None,
             "sleeper_id": None,
