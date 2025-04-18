@@ -1,7 +1,6 @@
 from collections.abc import Iterable, Sequence
 from pathlib import Path
-from textwrap import dedent
-from typing import Final, NamedTuple
+from typing import Any, Final, NamedTuple
 
 import numpy as np
 import plotly.express as px
@@ -71,7 +70,7 @@ def get_rosters_df(
         for roster in rosters
         for sleeper_id in roster.players
     ]
-    rosters_df = pl.DataFrame(arr, schema={"owner_name": pl.String, "sleeper_id": pl.String, "is_starter": pl.Boolean})
+    rosters_df = pl.DataFrame(arr, orient="row", schema={"owner_name": pl.String, "sleeper_id": pl.String, "is_starter": pl.Boolean})
     rosters_df = rosters_df.join(_players_df, on="sleeper_id", how="full", coalesce=True)
 
     if not include_picks:
@@ -89,6 +88,7 @@ def get_rosters_df(
     picks_arr = [get_pick_row(roster.name, pick) for roster in rosters for pick in roster.picks]
     picks_df = pl.DataFrame(
         picks_arr,
+        orient="row",
         schema={
             "owner_name": pl.String,
             "player_id": pl.String,
@@ -149,17 +149,27 @@ def get_players() -> pl.DataFrame:
 
     return pl.DataFrame(
         player_arr,
+        orient="row",
         schema={"full_name": pl.String, "player_id": pl.String, "sleeper_id": pl.String, "position": pl.String},
     )
 
+def determine_trend(value_history: Iterable[Sequence[float]]) -> list[float]:
+    """
+    Determine the linear regression slope for each sequence in value_history.
+    Returns a list of slopes indicating the trend direction for each sequence.
+    """
 
-def determine_trend(value_history: Iterable[Sequence[float]]) -> Iterable[float]:
-    """Determine the trend of the value history"""
+    slopes = []
+    for nums in value_history:
+        nums = [float(num) for num in nums if not np.isnan(num)]
+        if len(nums) < 2 or np.var(nums) == 0:
+            slopes.append(0.0)  # No trend if no variance
+            continue
+        x = np.arange(len(nums))
+        result: Any = linregress(x, nums)
+        slopes.append(result.slope if result.slope is not None else 0.0)
+    return slopes
 
-    return [
-        result.slope if isinstance(result.slope, float) else 0
-        for result in (linregress(np.arange(len(nums)), nums) for nums in value_history)
-    ]
 
 
 def init() -> None:
@@ -225,17 +235,16 @@ def get_user_input() -> UserInput | None:
 def render(user_input: UserInput) -> None:
     owner_id, league, ranking_set, starters_only, include_picks = user_input
     prog = st.progress(0)
-    positions: Sequence[str] = POSITIONS_WITH_PICK if include_picks and not starters_only else POSITIONS
-    _ = st.header(league.name)
-    details = st.expander("League Info", expanded=False)
-    _ = details.markdown(
-        dedent(f"""
-        * owner: {owner_id}
-        * league: {league.id}
-        * {league.league_type}
-        * {league.team_count} teams
+    positions = POSITIONS_WITH_PICK if include_picks and not starters_only else POSITIONS
+
+    st.header(league.name)
+    with st.expander("League Info", expanded=False):
+        st.markdown(f"""
+        * Owner: {owner_id}
+        * League ID: {league.id}
+        * Type: {league.league_type}
+        * Teams: {league.team_count}
         """)
-    )
 
     _ = prog.progress(10)
     players_df = get_players()
@@ -282,7 +291,7 @@ def render(user_input: UserInput) -> None:
             other=(
                 roster_df.group_by("owner_name", "position")
                 .agg(pl.col("value").sum())
-                .pivot(index="owner_name", columns="position", values="value")
+                .pivot(index="owner_name", on="position", values="value")
             ),
             on="owner_name",
             how="left",
@@ -292,8 +301,8 @@ def render(user_input: UserInput) -> None:
         .sort("value", descending=True, nulls_last=True)
     )
 
-    league_values_long_df = league_values.select(pl.col(["owner_name", *positions])).melt(
-        id_vars="owner_name", value_vars=positions, variable_name="position", value_name="value"
+    league_values_long_df = league_values.select(pl.col(["owner_name", *positions])).unpivot(
+        index="owner_name", on=positions, variable_name="position", value_name="value"
     )
 
     _ = prog.progress(100)
