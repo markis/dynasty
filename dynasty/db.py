@@ -1,5 +1,5 @@
 from collections.abc import Iterable
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from os import getenv
 
 from sqlalchemy import Engine, create_engine
@@ -116,14 +116,21 @@ def upsert_player_rankings(session: Session, player_rankings: Iterable[PlayerRan
     session.commit()
 
 
-def get_player_rankings(session: Session, league_type: LeagueType, ranking_set: RankingSet) -> Iterable[PlayerRanking]:
+def get_player_rankings(
+    session: Session,
+    league_type: LeagueType,
+    ranking_set: RankingSet,
+    end_date: datetime,
+    time_frame: timedelta,
+) -> Iterable[PlayerRanking]:
     query = (
         select(PlayerRanking)
         .where(
-            (PlayerRanking.league_type == league_type)
-            & (PlayerRanking.date > datetime.now(tz=UTC).date() - timedelta(days=365))
-            & (PlayerRanking.ranking_set == ranking_set.value)
+            PlayerRanking.league_type == league_type,
+            PlayerRanking.date > end_date - time_frame,
+            PlayerRanking.date <= end_date,
+            PlayerRanking.ranking_set == ranking_set.value,
         )
-        .order_by(PlayerRanking.__table__.c.player_id, PlayerRanking.__table__.c.date)
+        .order_by(PlayerRanking.player_id, PlayerRanking.date)  # type: ignore[arg-type]
     )
     return session.exec(query)

@@ -1,4 +1,6 @@
 from collections.abc import Iterable, Sequence
+from datetime import datetime, timedelta, UTC
+from os import environ
 from pathlib import Path
 from typing import Any, Final, NamedTuple
 
@@ -30,13 +32,14 @@ class UserInput(NamedTuple):
     rankings_set: RankingSet
     starters_only: bool = False
     include_picks: bool = False
+    time_frame: timedelta = timedelta(days=30)
 
 
 def get_league_name(league: League) -> str:
     return league.name
 
 
-@st.cache_data(ttl=300)
+# @st.cache_data(ttl=300)
 def get_leagues(sleeper_username: str) -> tuple[str, list[League]]:
     with SleeperService() as sleeper:
         sleeper_id = sleeper.get_sleeper_id(sleeper_username)
@@ -52,7 +55,7 @@ def get_leagues(sleeper_username: str) -> tuple[str, list[League]]:
         return sleeper_id, list(leagues)
 
 
-@st.cache_data(ttl=300)
+# @st.cache_data(ttl=300)
 def get_rosters(league_id: str) -> Sequence[Roster]:
     with SleeperService() as sleeper:
         return sleeper.get_rosters(league_id)
@@ -100,33 +103,41 @@ def get_rosters_df(
     return pl.concat((rosters_df, picks_df), how="diagonal")
 
 
-@st.cache_data(ttl=300)
-def get_rankings(league_type: LeagueType, ranking_set: RankingSet) -> pl.DataFrame:
-    import os
+# @st.cache_data(ttl=300)
+def get_rankings(league_type: LeagueType, ranking_set: RankingSet, time_frame: timedelta) -> pl.DataFrame:
+    """Retrieve player rankings from database or CSV file.
+    
+    Args:
+        league_type: Type of league (e.g., dynasty, redraft)
+        ranking_set: Set of rankings to retrieve
+        
+    Returns:
+        DataFrame containing player rankings with player_id, date, and value columns
+    """
+    psql_url = environ.get("PSQL_URL")
+    assert psql_url, "PSQL_URL environment variable must be set"
+    engine = create_database(psql_url)
+    today = datetime.now(UTC)
 
-    if psql_url := os.getenv("PSQL_URL"):
-        engine = create_database(psql_url)
+    with Session(engine) as session:
+        rankings = get_player_rankings(
+            session=session,
+            league_type=league_type,
+            ranking_set=ranking_set,
+            end_date=today,
+            time_frame=time_frame,
+        )
 
-        with Session(engine) as session:
-            rankings = (
-                (str(ranking.player_id), ranking.date, ranking.value)
-                for ranking in get_player_rankings(session, league_type, ranking_set)
-            )
-            return pl.DataFrame(
-                rankings,
-                schema={"player_id": pl.String, "date": pl.Date, "value": pl.Int64},
-            )
-    else:
-        return pl.read_csv(
-            DATA_DIR / f"{ranking_set.name.lower()}-{league_type.value.lower()}.csv",
+        return pl.DataFrame(
+            ((str(r.player_id), r.date, r.value) for r in rankings),
             schema={"player_id": pl.String, "date": pl.Date, "value": pl.Int64},
         )
 
 
 def get_players_and_rankings(
-    league_type: LeagueType, ranking_set: RankingSet, _players_df: pl.DataFrame
+    league_type: LeagueType, ranking_set: RankingSet, _players_df: pl.DataFrame, time_frame: timedelta
 ) -> pl.DataFrame:
-    rankings_df = get_rankings(league_type, ranking_set)
+    rankings_df = get_rankings(league_type, ranking_set, time_frame=time_frame)
     rankings_df = (
         rankings_df.group_by("player_id")
         .agg(pl.col("value").last().alias("value"), pl.col("value").explode().alias("value_history"))
@@ -180,34 +191,66 @@ def init() -> None:
 
 
 def get_user_input() -> UserInput | None:
+    """Get user input from Streamlit sidebar for dynasty league analysis.
+    
+    Returns:
+        UserInput object with user selections or None if required fields are missing
+    """
+    # Get username and validate leagues
     sleeper_username = st.sidebar.text_input("Sleeper Username", key="sleeper")
-    if not sleeper_username:
-        return
-
-    owner_id, leagues = get_leagues(sleeper_username)
-    if not leagues:
-        return
-
+    if not (sleeper_username and (result := get_leagues(sleeper_username))):
+        return None
+    
+    owner_id, leagues = result
+    
+    # League selection
     league = st.sidebar.selectbox(
         "Select a league",
-        leagues,
+        options=leagues,
         key="league",
         format_func=get_league_name,
     )
     if not league:
-        return
-
-    rankings_set = (
-        st.sidebar.selectbox("Rankings Set", [RankingSet.KeepTradeCut, RankingSet.DynastyProcess], key="rankings_set")
-        or RankingSet.KeepTradeCut
+        return None
+    
+    # Analysis configuration
+    rankings_set = st.sidebar.selectbox(
+        "Rankings Set",
+        options=[RankingSet.KeepTradeCut, RankingSet.DynastyProcess],
+        key="rankings_set",
+        help="Select the source of player rankings",
+    ) or RankingSet.KeepTradeCut
+    
+    starters_only = st.sidebar.checkbox(
+        "Starters Only", 
+        key="starters_only",
+        help="Show only starting players"
     )
-
-    starters_only = st.sidebar.checkbox("Starters Only", key="starters_only")
+    
     include_picks = st.sidebar.checkbox(
-        "Include Picks", key="include_picks", value=not starters_only, disabled=starters_only
+        "Include Picks",
+        key="include_picks",
+        value=not starters_only,
+        disabled=starters_only,
+        help="Include draft picks in analysis"
     )
-
-    return UserInput(owner_id, league, rankings_set, starters_only, include_picks)
+    
+    trending_days = st.sidebar.slider(
+        "Trending Days",
+        min_value=1,
+        max_value=365,
+        value=30,
+        help="Number of days to analyze trends"
+    )
+    
+    return UserInput(
+        owner_id=owner_id,
+        league=league,
+        rankings_set=rankings_set,
+        starters_only=starters_only,
+        include_picks=include_picks,
+        time_frame=timedelta(days=trending_days)
+    )
 
 
 # def forecast_values(value_history: Sequence[Sequence[int]], days: int = 30) -> Sequence[Sequence[float]]:
@@ -233,7 +276,7 @@ def get_user_input() -> UserInput | None:
 
 
 def render(user_input: UserInput) -> None:
-    owner_id, league, ranking_set, starters_only, include_picks = user_input
+    owner_id, league, ranking_set, starters_only, include_picks, time_frame = user_input
     prog = st.progress(0)
     positions = POSITIONS_WITH_PICK if include_picks and not starters_only else POSITIONS
 
@@ -249,7 +292,7 @@ def render(user_input: UserInput) -> None:
     _ = prog.progress(10)
     players_df = get_players()
     _ = prog.progress(50)
-    rankings_df = get_players_and_rankings(league.league_type, ranking_set, players_df)
+    rankings_df = get_players_and_rankings(league.league_type, ranking_set, players_df, time_frame)
     _ = prog.progress(80)
 
     roster_df = (
