@@ -198,11 +198,17 @@ class KTCService:
             is_pick = PlayerPosition.from_str(player["position"]) == PlayerPosition.PICK
             player_data: dict[str, list[KTCValue]] = json.loads(data)
             for value in player_data["overallValue"]:
+                date_str = value["d"]
+                try:
+                    date_dt = datetime.strptime(date_str, "%Y-%m-%d").replace(tzinfo=UTC).date()
+                except ValueError:
+                    date_dt = datetime.strptime(date_str, "%y%m%d").replace(tzinfo=UTC).date()
+
                 yield PlayerRanking(
                     player_id=player_id,
                     value=value["v"],
                     ranking_set=RankingSet.KeepTradeCut,
                     league_type=league_type,
-                    date=datetime.strptime(value["d"], "%Y-%m-%d").replace(tzinfo=UTC).date(),
+                    date=date_dt,
                     is_pick=is_pick,
                 )

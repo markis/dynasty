@@ -62,4 +62,4 @@ def import_players(ranking_sets: Container[RankingSet], *, back_fill: bool = Fal
 
 if __name__ == "__main__":
     back_fill = os.environ.get("BACK_FILL", "false").lower() in ("true", "yes", "on", "1")
-    import_players({RankingSet.KeepTradeCut}, back_fill=back_fill)
+    import_players({RankingSet.DynastyProcess, RankingSet.KeepTradeCut}, back_fill=back_fill)

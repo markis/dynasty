@@ -1,3 +1,4 @@
+from datetime import datetime
 from collections.abc import Iterable, Mapping, Sequence
 from types import TracebackType
 from typing import Final, NotRequired, Self, TypedDict
@@ -7,7 +8,7 @@ import requests
 from dynasty.models import League, LeagueType, Player, PlayerPosition, Roster, Team
 from dynasty.util import generate_id, get_date, get_height, get_placement
 
-CURRENT_YEAR = 2024
+CURRENT_YEAR: int = datetime.now().year
 SLEEPER_IDS_TO_IGNORE = {
     "4634",  # not "Kenneth Walker III"
     "232",  # not "Frank Gore Jr"
