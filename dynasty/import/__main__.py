@@ -9,6 +9,8 @@ from tqdm import tqdm
 from dynasty.db import Session, create_database, upsert_player_rankings, upsert_players
 from dynasty.models import Player, PlayerRanking, RankingSet
 from dynasty.service.dynasty_process import DynastyProcess
+from dynasty.service.fantasy_calc import FantasyCalcService
+from dynasty.service.fantasy_navigator import FantasyNavigatorService
 from dynasty.service.keeptradecut import KTCService
 from dynasty.service.sleeper import SleeperService
 from dynasty.util import SideEffect
@@ -44,6 +46,20 @@ class PlayerRankingRetriever:
                     desc="Retrieving DynastyProcess rankings",
                 )
 
+        if RankingSet.FantasyCalc in ranking_sets:
+            with FantasyCalcService() as fc_service:
+                yield from tqdm(
+                    SideEffect(fc_service.get_rankings(back_fill=back_fill), side_effect=self.track),
+                    desc="Retrieving FantasyCalc rankings",
+                )
+
+        if RankingSet.FantasyNavigator in ranking_sets:
+            with FantasyNavigatorService() as fn_service:
+                yield from tqdm(
+                    SideEffect(fn_service.get_rankings(back_fill=back_fill), side_effect=self.track),
+                    desc="Retrieving FantasyNavigator rankings",
+                )
+
     def get_players(self) -> Iterable[Player]:
         with SleeperService() as sleeper_service:
             players = (player for player in sleeper_service.get_players() if player.player_id in self.player_ids)
@@ -61,5 +77,11 @@ def import_players(ranking_sets: Container[RankingSet], *, back_fill: bool = Fal
 
 
 if __name__ == "__main__":
+    RANKING_SETS = {
+        RankingSet.FantasyNavigator,
+        RankingSet.FantasyCalc,
+        RankingSet.DynastyProcess,
+        RankingSet.KeepTradeCut,
+    }
     back_fill = os.environ.get("BACK_FILL", "false").lower() in ("true", "yes", "on", "1")
-    import_players({RankingSet.DynastyProcess, RankingSet.KeepTradeCut}, back_fill=back_fill)
+    import_players(RANKING_SETS, back_fill=back_fill)

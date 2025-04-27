@@ -216,7 +216,7 @@ def get_user_input() -> UserInput | None:
     # Analysis configuration
     rankings_set = st.sidebar.selectbox(
         "Rankings Set",
-        options=[RankingSet.KeepTradeCut, RankingSet.DynastyProcess],
+        options=[RankingSet.KeepTradeCut, RankingSet.DynastyProcess, RankingSet.FantasyCalc, RankingSet.FantasyNavigator],
         key="rankings_set",
         help="Select the source of player rankings",
     ) or RankingSet.KeepTradeCut

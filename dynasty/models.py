@@ -7,12 +7,14 @@ from uuid import UUID
 
 from pydantic import BaseModel
 from sqlalchemy import UniqueConstraint
-from sqlmodel import Field, SQLModel, Table
+from sqlmodel import Field, SQLModel
 
 
 class RankingSet(StrEnum):
     KeepTradeCut = "Keep Trade Cut"
     DynastyProcess = "Dynasty Process"
+    FantasyCalc = "Fantasy Calc"
+    FantasyNavigator = "Fantasy Navigator"
 
 
 class LeagueType(StrEnum):
