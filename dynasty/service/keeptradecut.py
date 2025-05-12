@@ -4,7 +4,6 @@ from collections.abc import Iterable
 from datetime import UTC, date, datetime
 from types import TracebackType
 from typing import Final, Self, TypedDict
-from uuid import UUID
 
 from bs4.element import Tag
 
@@ -185,7 +184,7 @@ class KTCService:
 
         for player in json_data:
             player_slug: str = player["slug"]
-            player_id: UUID = generate_id(player["playerName"])
+            player_id = generate_id(player["playerName"])
 
             player_url: str = f"{PLAYER_URL}{player_slug}"
             variable = "playerOneQB" if league_type == LeagueType.Standard else "playerSuperflex"

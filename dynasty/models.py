@@ -22,6 +22,23 @@ class LeagueType(StrEnum):
     SuperFlex = "superflex"
 
 
+class StatusType(StrEnum):
+    PreDraft = "pre_draft"
+    Drafting = "drafting"
+    InSeason = "in_season"
+
+    @classmethod
+    def from_str(cls, value: str) -> "StatusType":
+        if value == "pre_draft":
+            return cls.PreDraft
+        if value == "drafting":
+            return cls.Drafting
+        if value == "in_season":
+            return cls.InSeason
+        err = f"Invalid status type: {value}"
+        raise ValueError(err)
+
+
 POS_MAP: Final[Mapping[str, str]] = {
     "PK": "K",
     "DEF": "DST",
@@ -167,6 +184,7 @@ class League(BaseModel):
     league_type: LeagueType
     name: str
     team_count: int
+    status: StatusType
 
 
 class SleeperRosterSettings(TypedDict):

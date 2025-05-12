@@ -10,9 +10,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 license = "MIT"
 keywords = []
-authors = [
-  { name = "Markis Taylor", email = "m@rkis.net" },
-]
+authors = [{ name = "Markis Taylor", email = "m@rkis.net" }]
 classifiers = [
   "Development Status :: 4 - Beta",
   "Programming Language :: Python",
@@ -46,10 +44,7 @@ Source = "https://github.com/markis/dynasty"
 path = "dynasty/__about__.py"
 
 [tool.hatch.envs.types]
-extra-dependencies = [
-  "mypy>=1.0.0",
-  "pytest"
-]
+extra-dependencies = ["mypy>=1.0.0", "pytest"]
 [tool.hatch.envs.types.scripts]
 check = "mypy --install-types --non-interactive {args:dynasty tests}"
 
@@ -64,9 +59,7 @@ testpaths = ["tests"]
 source_pkgs = ["dynasty", "tests"]
 branch = true
 parallel = true
-omit = [
-  "dynasty/__about__.py",
-]
+omit = ["dynasty/__about__.py"]
 
 [tool.coverage.paths]
 dynasty = ["dynasty"]
@@ -104,9 +97,6 @@ select = [
   "ARG003",
   "ARG004",
   "ARG005",
-  "ASYNC100",
-  "ASYNC101",
-  "ASYNC102",
   "B002",
   "B003",
   "B004",
@@ -188,7 +178,6 @@ select = [
   "E742",
   "E743",
   "E902",
-  "E999",
   "EM101",
   "EM102",
   "EM103",
@@ -332,7 +321,6 @@ select = [
   "PLR0133",
   "PLR0206",
   "PLR0402",
-  "PLR1701",
   "PLR1711",
   "PLR1714",
   "PLR1722",
@@ -480,7 +468,6 @@ select = [
   "S317",
   "S318",
   "S319",
-  "S320",
   "S321",
   "S323",
   "S324",
@@ -540,12 +527,12 @@ select = [
   "T100",
   "T201",
   "T203",
-  "TCH001",
-  "TCH002",
-  "TCH003",
-  "TCH004",
-  "TCH005",
-  "TCH010",
+  "TC001",
+  "TC002",
+  "TC003",
+  "TC004",
+  "TC005",
+  "TC010",
   "TD004",
   "TD005",
   "TD006",
@@ -553,18 +540,13 @@ select = [
   "TID251",
   "TID252",
   "TID253",
-  "TRIO100",
-  "TRIO105",
-  "TRIO109",
-  "TRIO110",
-  "TRIO115",
   "TRY002",
   "TRY003",
   "TRY004",
   "TRY201",
   "TRY300",
   "TRY301",
-  "TRY302",
+  "TRY203",
   "TRY400",
   "TRY401",
   "UP001",
@@ -591,7 +573,6 @@ select = [
   "UP024",
   "UP025",
   "UP026",
-  "UP027",
   "UP028",
   "UP029",
   "UP030",
@@ -602,7 +583,6 @@ select = [
   "UP035",
   "UP036",
   "UP037",
-  "UP038",
   "UP039",
   "UP040",
   "UP041",
@@ -624,17 +604,8 @@ select = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"**/scripts/*" = [
-  "INP001",
-  "T201",
-]
-"**/tests/**/*" = [
-  "PLC1901",
-  "PLR2004",
-  "PLR6301",
-  "S",
-  "TID252",
-]
+"**/scripts/*" = ["INP001", "T201"]
+"**/tests/**/*" = ["PLC1901", "PLR2004", "PLR6301", "S", "TID252"]
 
 [tool.ruff.lint.flake8-tidy-imports]
 ban-relative-imports = "all"
@@ -645,4 +616,3 @@ known-first-party = ["dynasty"]
 [tool.ruff.lint.flake8-pytest-style]
 fixture-parentheses = false
 mark-parentheses = false
-

@@ -1,3 +1,4 @@
+import datetime
 import difflib
 import io
 import os
@@ -19,11 +20,13 @@ COMMIT_MESSAGE = "chore: update data"
 
 def update_files():
     engine = create_database()
+    end_date = datetime.datetime.now(datetime.UTC)
+    time_frame = datetime.timedelta(days=365)
     with Session(engine) as session:
         for league_type, ranking_set in product(LeagueType, RankingSet):
             rankings = (
                 (str(ranking.player_id), ranking.date, ranking.value)
-                for ranking in get_player_rankings(session, league_type, ranking_set)
+                for ranking in get_player_rankings(session, league_type, ranking_set, end_date, time_frame)
             )
             path = f"data/{ranking_set.name}-{league_type.name}.csv".lower()
             df = pl.DataFrame(
@@ -43,11 +46,14 @@ def generate_diff(old_content: str, new_content: str, filename: str) -> str:
 
 def update_github(token: str = GITHUB_TOKEN, repo_name: str = REPO_NAME, branch: str = BRANCH_NAME) -> None:
     if not token:
-        raise ValueError("GitHub token is required to update the repository")
+        err = "GitHub token is required to update the repository"
+        raise ValueError(err)
     if not repo_name:
-        raise ValueError("GitHub repository name is required to update the repository")
+        err = "GitHub repository name is required to update the repository"
+        raise ValueError(err)
     if not branch:
-        raise ValueError("GitHub branch name is required to update the repository")
+        err = "GitHub branch name is required to update the repository"
+        raise ValueError(err)
 
     elements: list[InputGitTreeElement] = []
     g = Github(token)

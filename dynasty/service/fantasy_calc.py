@@ -31,6 +31,7 @@ class FCPlayer(TypedDict):
     espnId: str | None
     fleaflickerId: str | None
 
+
 class FCRanking(TypedDict):
     player: FCPlayer
     value: int
@@ -58,7 +59,6 @@ class FantasyCalcService:
     session: Final[RequestsSession]
 
     def __init__(self, session: RequestsSession | None = None) -> None:
-
         if session is None:
             session = RequestsSession()
         self.session = session
@@ -74,11 +74,11 @@ class FantasyCalcService:
     ) -> None:
         self.session.close()
 
-
     def get_rankings(self, *, back_fill: bool) -> Iterable[PlayerRanking]:
         for league_type in (LeagueType.SuperFlex, LeagueType.Standard):
             if back_fill:
-                raise NotImplementedError("Backfilling is not supported for FantasyCalc.")
+                err = "Backfilling is not supported for FantasyCalc"
+                raise NotImplementedError(err)
             else:
                 yield from self.get_todays_rankings(league_type)
 
@@ -91,7 +91,7 @@ class FantasyCalcService:
         """
         url: str = SUPER_FLEX_URL if league_type == LeagueType.SuperFlex else STANDARD_URL
         response = self.session.get(url)
-        if response.status_code != 200:
+        if not response.ok:
             err = f"Error getting player rankings from FantasyCalc: {response.status_code}"
             raise ValueError(err)
 

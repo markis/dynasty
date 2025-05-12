@@ -34,7 +34,6 @@ class FantasyNavigatorService:
     session: Final[RequestsSession]
 
     def __init__(self, session: RequestsSession | None = None) -> None:
-
         if session is None:
             session = RequestsSession()
         self.session = session
@@ -50,15 +49,15 @@ class FantasyNavigatorService:
     ) -> None:
         self.session.close()
 
-
     def get_rankings(self, *, back_fill: bool) -> Iterable[PlayerRanking]:
         for league_type in (LeagueType.SuperFlex, LeagueType.Standard):
             if back_fill:
-                raise NotImplementedError("Backfilling is not supported for FantasyNavigator.")
+                err = "Backfilling is not supported for FantasyNavigator"
+                raise NotImplementedError(err)
             else:
                 yield from self.get_todays_rankings(league_type)
 
-    def get_todays_rankings(self, league_type: LeagueType) -> Iterable[PlayerRanking]:
+    def get_todays_rankings(self, _league_type: LeagueType) -> Iterable[PlayerRanking]:
         """
         Get player rankings from FantasyNavigator.
 
@@ -67,7 +66,7 @@ class FantasyNavigatorService:
         """
         url: str = URL
         response = self.session.get(url)
-        if response.status_code != 200:
+        if not response.ok:
             err = f"Error getting player rankings from FantasyNavigator: {response.status_code}"
             raise ValueError(err)
 
