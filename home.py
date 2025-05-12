@@ -39,7 +39,7 @@ def get_league_name(league: League) -> str:
     return league.name
 
 
-# @st.cache_data(ttl=300)
+@st.cache_data(ttl=300)
 def get_leagues(sleeper_username: str) -> tuple[str, list[League]]:
     with SleeperService() as sleeper:
         sleeper_id = sleeper.get_sleeper_id(sleeper_username)
@@ -105,7 +105,7 @@ def get_rosters_df(
     return pl.concat((rosters_df, picks_df), how="diagonal")
 
 
-# @st.cache_data(ttl=300)
+@st.cache_data(ttl=300)
 def get_rankings(league_type: LeagueType, ranking_set: RankingSet, time_frame: timedelta) -> pl.DataFrame:
     """Retrieve player rankings from database or CSV file.
 
@@ -190,9 +190,13 @@ def determine_trend(value_history: Iterable[Sequence[float]]) -> list[float]:
 
 def init() -> None:
     st.set_page_config("Dynasty Rankings", ":football:", layout="wide")
-    fields: Iterable[str] = ("sleeper_id", "sleeper", "leagues", "league")
-    if not all(field in st.session_state for field in fields):
-        st.session_state.update({field: None for field in fields})
+    fields = frozenset({"sleeper_id", "sleeper", "leagues", "league", "league_id"})
+
+    # Get query parameters and flatten any list values
+    query_defaults = {k: v[0] if isinstance(v, list) else v for k, v in st.query_params.items()}
+
+    # Update session state only for missing fields
+    st.session_state.update({field: query_defaults.get(field) for field in fields if field not in st.session_state})
 
 
 def get_user_input() -> UserInput | None:
@@ -205,18 +209,30 @@ def get_user_input() -> UserInput | None:
     sleeper_username = st.sidebar.text_input("Sleeper Username", key="sleeper")
     if not (sleeper_username and (result := get_leagues(sleeper_username))):
         return None
-
+    st.query_params.update({"sleeper": sleeper_username})
     owner_id, leagues = result
 
-    # League selection
-    league = st.sidebar.selectbox(
+    # Prepare league_id list and a lookup dict
+    league_id_to_league = {league.id: league for league in leagues}
+    league_ids = list(league_id_to_league.keys())
+
+    # Get league_id from query params if present
+    league_id_default = st.query_params.get("league_id", [None])[0]
+    # If not in query, fall back to session state or first league
+    default_league_id = league_id_default if league_id_default in league_id_to_league else league_ids[0]
+
+    # League selection by league_id
+    league_id = st.sidebar.selectbox(
         "Select a league",
-        options=leagues,
-        key="league",
-        format_func=get_league_name,
+        options=league_ids,
+        index=league_ids.index(default_league_id),
+        key="league_id",
+        format_func=lambda lid: get_league_name(league_id_to_league[lid]),
     )
-    if not league:
+    if not league_id:
         return None
+    st.query_params.update({"league_id": league_id})
+    league = league_id_to_league[league_id]
 
     # Analysis configuration
     rankings_set = (
@@ -233,8 +249,10 @@ def get_user_input() -> UserInput | None:
         )
         or RankingSet.KeepTradeCut
     )
+    st.query_params.update({"rankings_set": rankings_set})
 
     starters_only = st.sidebar.checkbox("Starters Only", key="starters_only", help="Show only starting players")
+    st.query_params.update({"starters_only": starters_only})
 
     include_picks = st.sidebar.checkbox(
         "Include Picks",
@@ -243,10 +261,17 @@ def get_user_input() -> UserInput | None:
         disabled=starters_only,
         help="Include draft picks in analysis",
     )
+    st.query_params.update({"include_picks": include_picks})
 
     trending_days = st.sidebar.slider(
-        "Trending Days", min_value=1, max_value=365, value=30, help="Number of days to analyze trends"
+        "Trending Days",
+        key="trending_days",
+        min_value=1,
+        max_value=365,
+        value=30,
+        help="Number of days to analyze trends",
     )
+    st.query_params.update({"trending_days": trending_days})
 
     return UserInput(
         owner_id=owner_id,
@@ -256,28 +281,6 @@ def get_user_input() -> UserInput | None:
         include_picks=include_picks,
         time_frame=timedelta(days=trending_days),
     )
-
-
-# def forecast_values(value_history: Sequence[Sequence[int]], days: int = 30) -> Sequence[Sequence[float]]:
-#     """Forecast future values using Prophet model"""
-#
-#     forecasts: list[Sequence[float]] = []
-#
-#     for history in value_history:
-#         if len(history) <= 1:
-#             forecasts.append([])
-#             continue
-#
-#         try:
-#             model = ARIMA(history, order=(days, 1, 0))  # You can tune the order parameters
-#             model_fit = model.fit()
-#             forecast = model_fit.forecast(steps=days)
-#             forecasts.append(forecast)
-#         except Exception as e:
-#             forecasts.append([])
-#             print(history)
-#
-#     return forecasts
 
 
 def render(user_input: UserInput) -> None:
