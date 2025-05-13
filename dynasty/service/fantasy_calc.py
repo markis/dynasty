@@ -6,7 +6,8 @@ from typing import Final, Self, TypedDict
 
 from requests import Session as RequestsSession
 
-from dynasty.models import LeagueType, PlayerPosition, PlayerRanking, RankingSet
+from dynasty.models import LeagueType, Player, PlayerPosition, PlayerRanking, RankingSet
+from dynasty.service.sleeper import SleeperService
 from dynasty.util import generate_id
 
 logger = logging.getLogger(__name__)
@@ -57,11 +58,17 @@ class FantasyCalcService:
     """Service for getting player rankings from FantasyCalc."""
 
     session: Final[RequestsSession]
+    players: dict[str, Player]
 
     def __init__(self, session: RequestsSession | None = None) -> None:
         if session is None:
             session = RequestsSession()
         self.session = session
+
+        # Prepare the sleeper map
+        sleeper = SleeperService(session=session)
+        players = sleeper.get_players()
+        self.players = {player.sleeper_id: player for player in players if player.sleeper_id}
 
     def __enter__(self) -> Self:
         return self
@@ -103,12 +110,13 @@ class FantasyCalcService:
             except (ValueError, TypeError, IndexError) as e:
                 logger.debug("Error processing player data: %s, player_data: %s", e, player_data)
 
-    @staticmethod
-    def convert_player_data(data: FCRanking, league_type: LeagueType, *, now: date) -> PlayerRanking:
-        player = data["player"]
-        position = PlayerPosition.from_str(player["position"])
+    def convert_player_data(self, data: FCRanking, league_type: LeagueType, *, now: date) -> PlayerRanking:
+        sleeper_id = data["player"]["sleeperId"]
+        player = self.players.get(sleeper_id)
+        player_id = player.player_id if player else generate_id(data["player"]["name"])
+        position = PlayerPosition.from_str(data["player"]["position"])
         return PlayerRanking(
-            player_id=generate_id(player["name"]),
+            player_id=player_id,
             ranking_set=RankingSet.FantasyCalc,
             value=data["value"],
             league_type=league_type,
