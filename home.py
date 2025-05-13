@@ -294,6 +294,7 @@ def render(user_input: UserInput) -> None:
         * Owner: {owner_id}
         * League ID: {league.id}
         * Type: {league.league_type}
+        * Scoring: {league.scoring_type}
         * Teams: {league.team_count}
         * Status: {league.status}
         """)

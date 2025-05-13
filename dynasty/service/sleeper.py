@@ -4,7 +4,7 @@ from typing import Final, Literal, NotRequired, Self, TypedDict
 
 import requests
 
-from dynasty.models import League, LeagueType, Player, PlayerPosition, Roster, StatusType, Team
+from dynasty.models import League, LeagueType, Player, PlayerPosition, Roster, ScoringType, StatusType, Team
 from dynasty.util import generate_id, get_date, get_height, get_placement
 
 SLEEPER_IDS_TO_IGNORE = {
@@ -304,12 +304,16 @@ class SleeperService:
         is_super_flex = "SUPER_FLEX" in league_dict["roster_positions"]
         league_type: LeagueType = LeagueType.SuperFlex if is_super_flex else LeagueType.Standard
 
+        rec = league_dict["scoring_settings"]["rec"]
+        scoring_type = ScoringType.from_value(rec)
+
         return League(
             id=league_dict["league_id"],
             league_type=league_type,
             name=league_dict["name"],
             team_count=league_dict["total_rosters"],
             status=StatusType.from_str(league_dict["status"]),
+            scoring_type=scoring_type,
         )
 
     def convert_roster_data(
