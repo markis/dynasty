@@ -401,17 +401,19 @@ class SleeperService:
             return user["user_id"]
         return None
 
-    def get_leagues(self, user_id: str) -> Iterable[League]:
-        season = self.get_current_season()
+    def get_leagues(self, user_id: str, *, season: int | None = None) -> Iterable[League]:
+        if not season:
+            season = self.get_current_season()
         url = f"{self.BASE_URL}/user/{user_id}/leagues/nfl/{season}"
         page = self.session.get(url)
         leagues: list[SleeperLeagueDict] = page.json()
         return (league for league_dict in leagues if (league := self.convert_league_data(league_dict)))
 
     def get_drafts(
-        self, user_id: str, *, draft_status: Container[str] = frozenset(["complete"])
+        self, user_id: str, *, season: int | None = None, draft_status: Container[str] = frozenset(["complete"])
     ) -> Iterable[SleeperDraftDict]:
-        season = self.get_current_season()
+        if not season:
+            season = self.get_current_season()
         url = f"{self.BASE_URL}/user/{user_id}/drafts/nfl/{season}"
         page = self.session.get(url)
         drafts: list[SleeperDraftDict] = page.json()

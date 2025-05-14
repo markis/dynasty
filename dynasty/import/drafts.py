@@ -22,8 +22,15 @@ def main() -> None:
         logger.error("SLEEPER_USER_IDS environment variable is not set.")
         return
 
+    season: int | None = None
+    season_value = os.getenv("SLEEPER_SEASON")
+    if season_value is not None:
+        season = int(season_value)
+
     with SleeperService() as sleeper_service:
-        drafts = [draft for user_id in user_ids.split(",") for draft in sleeper_service.get_drafts(user_id)]
+        drafts = [
+            draft for user_id in user_ids.split(",") for draft in sleeper_service.get_drafts(user_id, season=season)
+        ]
 
     with ThreadPoolExecutor() as executor:
         futures = [executor.submit(process_draft_picks, draft["league_id"], draft["draft_id"]) for draft in drafts]
