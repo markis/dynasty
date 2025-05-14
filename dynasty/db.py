@@ -6,7 +6,7 @@ from sqlalchemy import Engine, create_engine
 from sqlalchemy.dialects.postgresql import insert
 from sqlmodel import Session, SQLModel, select
 
-from dynasty.models import LeagueType, Player, PlayerRanking, RankingSet
+from dynasty.models import LeagueType, Pick, Player, PlayerRanking, RankingSet
 
 PSQL_URL = getenv("PSQL_URL", "")
 
@@ -114,6 +114,28 @@ def upsert_player_rankings(session: Session, player_rankings: Iterable[PlayerRan
         if count % 100 == 0:
             session.commit()
     session.commit()
+
+
+def record_picks(session: Session, picks: list[Pick]) -> int:
+    if not picks:
+        return 0
+
+    pick_values = [
+        {
+            "league_id": pick.league_id,
+            "draft_id": pick.draft_id,
+            "sleeper_id": pick.sleeper_id,
+            "picked_by": pick.picked_by,
+            "pick_no": pick.pick_no,
+            "round": pick.round,
+        }
+        for pick in picks
+    ]
+
+    stmt = insert(Pick).values(pick_values).on_conflict_do_nothing()
+    result = session.exec(stmt)  # type: ignore[call-overload]
+    session.commit()
+    return result.rowcount
 
 
 def get_player_rankings(

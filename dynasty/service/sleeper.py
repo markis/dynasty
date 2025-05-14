@@ -1,4 +1,4 @@
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Container, Iterable, Mapping, Sequence
 from types import TracebackType
 from typing import Final, Literal, NotRequired, Self, TypedDict
 
@@ -161,7 +161,7 @@ class SeasonMetaDict(TypedDict):
     display_week: int
 
 
-class DraftSettingsDict(TypedDict):
+class SleeperDraftSettingsDict(TypedDict):
     teams: int
     slots_wr: int
     slots_te: int
@@ -175,21 +175,21 @@ class DraftSettingsDict(TypedDict):
     pick_timer: int
 
 
-class DraftMetadataDict(TypedDict):
+class SleeperDraftMetadataDict(TypedDict):
     scoring_type: str
     name: str
     description: str
 
 
-class DraftDict(TypedDict):
+class SleeperDraftDict(TypedDict):
     type: str
     status: str
     start_time: int
     sport: str
-    settings: DraftSettingsDict
+    settings: SleeperDraftSettingsDict
     season_type: str
     season: str
-    metadata: DraftMetadataDict
+    metadata: SleeperDraftMetadataDict
     league_id: str
     last_picked: int
     last_message_time: int
@@ -200,7 +200,7 @@ class DraftDict(TypedDict):
     created: int
 
 
-class DraftPickMetadataDict(TypedDict):
+class SleeperDraftPickMetadataDict(TypedDict):
     team: str
     status: str
     sport: str
@@ -213,14 +213,14 @@ class DraftPickMetadataDict(TypedDict):
     first_name: str
 
 
-class DraftPickDict(TypedDict):
+class SleeperDraftPickDict(TypedDict):
     player_id: str
     picked_by: str
     roster_id: str
     round: int | None
     draft_slot: int | None
     pick_no: int
-    metadata: DraftPickMetadataDict
+    metadata: SleeperDraftPickMetadataDict
     is_keeper: bool | None
     draft_id: str
 
@@ -321,7 +321,7 @@ class SleeperService:
         roster_dict: SleeperRosterDict,
         user_dict: SleeperUserDict,
         traded_picks: list[SleeperTradedPickDict],
-        drafted: list[DraftPickDict],
+        drafted: list[SleeperDraftPickDict],
     ) -> Roster:
         """Convert Sleeper league data to League model"""
         starters_data = roster_dict.get("starters") or []
@@ -408,6 +408,15 @@ class SleeperService:
         leagues: list[SleeperLeagueDict] = page.json()
         return (league for league_dict in leagues if (league := self.convert_league_data(league_dict)))
 
+    def get_drafts(
+        self, user_id: str, *, draft_status: Container[str] = frozenset(["complete"])
+    ) -> Iterable[SleeperDraftDict]:
+        season = self.get_current_season()
+        url = f"{self.BASE_URL}/user/{user_id}/drafts/nfl/{season}"
+        page = self.session.get(url)
+        drafts: list[SleeperDraftDict] = page.json()
+        return (draft for draft in drafts if draft["status"] in draft_status)
+
     def get_rosters(
         self, league_id: str, *, include_picks: bool = True, include_drafted: bool = True
     ) -> Sequence[Roster]:
@@ -425,11 +434,11 @@ class SleeperService:
             drafts_response = self.session.get(drafts_url)
             picks: list[SleeperTradedPickDict] = drafts_response.json()
 
-        drafted: list[DraftPickDict] = []
+        drafted: list[SleeperDraftPickDict] = []
         if include_drafted:
             drafts_url = f"{self.BASE_URL}/league/{league_id}/drafts"
             drafts_response = self.session.get(drafts_url)
-            drafts: list[DraftDict] = drafts_response.json()
+            drafts: list[SleeperDraftDict] = drafts_response.json()
 
             draft_url = f"{self.BASE_URL}/draft/{drafts[0]['draft_id']}/picks"
             draft_response = self.session.get(draft_url)

@@ -252,7 +252,7 @@ def get_user_input() -> UserInput | None:
     st.query_params.update({"rankings_set": rankings_set})
 
     starters_only = st.sidebar.checkbox("Starters Only", key="starters_only", help="Show only starting players")
-    st.query_params.update({"starters_only": starters_only})
+    st.query_params.update({"starters_only": str(starters_only).lower()})
 
     include_picks = st.sidebar.checkbox(
         "Include Picks",
@@ -261,7 +261,7 @@ def get_user_input() -> UserInput | None:
         disabled=starters_only,
         help="Include draft picks in analysis",
     )
-    st.query_params.update({"include_picks": include_picks})
+    st.query_params.update({"include_picks": str(include_picks).lower()})
 
     trending_days = st.sidebar.slider(
         "Trending Days",
@@ -271,7 +271,7 @@ def get_user_input() -> UserInput | None:
         value=30,
         help="Number of days to analyze trends",
     )
-    st.query_params.update({"trending_days": trending_days})
+    st.query_params.update({"trending_days": str(trending_days).lower()})
 
     return UserInput(
         owner_id=owner_id,

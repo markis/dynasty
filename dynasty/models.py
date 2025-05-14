@@ -22,6 +22,23 @@ class LeagueType(StrEnum):
     SuperFlex = "superflex"
 
 
+class ScoringType(StrEnum):
+    PPR = "ppr"
+    HalfPPR = "half_ppr"
+    Standard = "standard"
+
+    @classmethod
+    def from_value(cls, value: float) -> "ScoringType":
+        scoring_thresholds = {1.0: cls.PPR, 0.5: cls.HalfPPR, 0.0: cls.Standard}
+
+        for threshold, scoring_type in scoring_thresholds.items():
+            if value >= threshold:
+                return scoring_type
+
+        err = f"Invalid scoring value: {value}. Expected one of {list(scoring_thresholds.keys())}."
+        raise ValueError(err)
+
+
 class StatusType(StrEnum):
     PreDraft = "pre_draft"
     Drafting = "drafting"
@@ -29,14 +46,11 @@ class StatusType(StrEnum):
 
     @classmethod
     def from_str(cls, value: str) -> "StatusType":
-        if value == "pre_draft":
-            return cls.PreDraft
-        if value == "drafting":
-            return cls.Drafting
-        if value == "in_season":
-            return cls.InSeason
-        err = f"Invalid status type: {value}"
-        raise ValueError(err)
+        try:
+            return cls(value)
+        except ValueError as e:
+            err = f"Invalid status type: {value}"
+            raise ValueError(err) from e
 
 
 POS_MAP: Final[Mapping[str, str]] = {
@@ -137,7 +151,7 @@ class Team(StrEnum):
 
 
 class Player(SQLModel, table=True):
-    __table_args__ = (UniqueConstraint("player_id"),)
+    __table_args__ = (UniqueConstraint("player_id"), UniqueConstraint("sleeper_id"))
     id: int | None = Field(default=None, primary_key=True)
     player_id: UUID = Field(index=True)
     first_name: str
@@ -161,7 +175,7 @@ class Player(SQLModel, table=True):
     oddsjam_id: str | None
     rotowire_id: int | None
     rotoworld_id: int | None
-    sleeper_id: str | None = Field(index=True)
+    sleeper_id: str | None = Field(index=True, unique=True)
     sportradar_id: str | None
     stats_id: int | None
     swish_id: int | None
@@ -179,12 +193,24 @@ class PlayerRanking(SQLModel, table=True):
     is_pick: bool
 
 
+class Pick(SQLModel, table=True):
+    __table_args__ = (UniqueConstraint("sleeper_id", "draft_id"),)
+    id: int | None = Field(default=None, primary_key=True)
+    sleeper_id: str = Field(foreign_key="player.sleeper_id", index=True)
+    league_id: str
+    draft_id: str
+    round: int
+    pick_no: int
+    picked_by: str
+
+
 class League(BaseModel):
     id: str
     league_type: LeagueType
     name: str
     team_count: int
     status: StatusType
+    scoring_type: ScoringType
 
 
 class SleeperRosterSettings(TypedDict):
