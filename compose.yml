@@ -1,14 +1,14 @@
 services:
-  import:
-    image: markis/dynasty-import-job
-    build:
-      context: .
-      dockerfile: Containerfile
-    env_file: .env
-    volumes:
-      - /opt/dynastyprocess-data/:/Users/markis/src/dynastyprocess-data/
-    entrypoint: ["python", "-m"]
-    command: ["dynasty.import"]
+  # import:
+  #   image: markis/dynasty-import-job
+  #   build:
+  #     context: .
+  #     dockerfile: Containerfile
+  #   env_file: .env
+  #   volumes:
+  #     - /opt/dynastyprocess-data/:/Users/markis/src/dynastyprocess-data/
+  #   entrypoint: ["python", "-m"]
+  #   command: ["dynasty.import"]
 
   app:
     image: markis/dynasty
@@ -19,3 +19,5 @@ services:
     command: ["/src/home.py"]
     ports:
       - 8501:8501
+    env_file:
+      - .env
