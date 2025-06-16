@@ -344,23 +344,23 @@ def render(user_input: UserInput) -> None:
     if starters_only:
         roster_df = roster_df.filter(pl.col("is_starter"))
 
-    existing_positions = [pos for pos in positions if pos in roster_df.get_column("position").unique().to_list()]
+    existing_positions = roster_df.get_column("position").unique().to_list()
     positions = [pos for pos in positions if pos in existing_positions]
+
     league_values = (
         roster_df.filter(pl.col("owner_name").is_not_null())
         .group_by("owner_name")
         .agg(pl.col("value").sum().alias("value"), pl.col("trend").mean().alias("trend"))
         .join(
-            other=(
-                roster_df.group_by("owner_name", "position")
-                .agg(pl.col("value").sum())
-                .pivot(index="owner_name", on="position", values="value")
-            ),
+            other=roster_df.filter(pl.col("owner_name").is_not_null())
+            .group_by("owner_name", "position")
+            .agg(pl.col("value").sum())
+            .pivot(index="owner_name", on="position", values="value"),
             on="owner_name",
             how="left",
-            coalesce=True,
         )
-        .select(pl.col(["owner_name", "value", "trend", *positions]))
+        .with_columns([pl.col(pos).fill_null(0) for pos in positions])
+        .select(["owner_name", "value", "trend", *positions])
         .sort("value", descending=True, nulls_last=True)
     )
 
