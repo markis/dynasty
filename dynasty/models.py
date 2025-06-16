@@ -39,6 +39,22 @@ class ScoringType(StrEnum):
         raise ValueError(err)
 
 
+class TEPScoringType(StrEnum):
+    FullTEP = "full_tep"
+    HalfTEP = "half_tep"
+
+    @classmethod
+    def from_value(cls, value: float) -> "TEPScoringType | None":
+        scoring_thresholds = {1.0: cls.FullTEP, 0.5: cls.HalfTEP, 0.0: None}
+
+        for threshold, scoring_type in scoring_thresholds.items():
+            if value >= threshold:
+                return scoring_type
+
+        err = f"Invalid scoring value: {value}. Expected one of {list(scoring_thresholds.keys())}."
+        raise ValueError(err)
+
+
 class StatusType(StrEnum):
     PreDraft = "pre_draft"
     Drafting = "drafting"
@@ -60,6 +76,9 @@ POS_MAP: Final[Mapping[str, str]] = {
     "RDPICK": "PICK",
     "RDP": "PICK",
     "K/P": "K",
+    "SUPERFLEX": "SFLEX",
+    "SUPER_FLEX": "SFLEX",
+    "SF": "SFLEX",
 }
 
 
@@ -71,6 +90,8 @@ class PlayerPosition(StrEnum):
     DST = "DST"
     K = "K"
     PICK = "PICK"
+    FLEX = "FLEX"
+    SFLEX = "SFLEX"
 
     @classmethod
     def from_str(cls, value: str) -> Self | None:
@@ -211,6 +232,9 @@ class League(BaseModel):
     team_count: int
     status: StatusType
     scoring_type: ScoringType
+    bonus_tep: TEPScoringType | None
+    scoring_settings: dict[str, float]
+    roster_positions: Sequence[PlayerPosition]
 
 
 class SleeperRosterSettings(TypedDict):

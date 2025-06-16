@@ -1,5 +1,6 @@
 from collections.abc import Iterable, Sequence
 from datetime import UTC, datetime, timedelta
+from json import dumps
 from os import environ
 from pathlib import Path
 from typing import Any, Final, NamedTuple
@@ -28,6 +29,7 @@ A positive trend indicates an increasing value, while a negative trend indicates
 
 class UserInput(NamedTuple):
     owner_id: str
+    owner_name: str
     league: League
     rankings_set: RankingSet
     starters_only: bool = False
@@ -275,6 +277,7 @@ def get_user_input() -> UserInput | None:
 
     return UserInput(
         owner_id=owner_id,
+        owner_name=sleeper_username,
         league=league,
         rankings_set=rankings_set,
         starters_only=starters_only,
@@ -284,7 +287,7 @@ def get_user_input() -> UserInput | None:
 
 
 def render(user_input: UserInput) -> None:
-    owner_id, league, ranking_set, starters_only, include_picks, time_frame = user_input
+    owner_id, current_username, league, ranking_set, starters_only, include_picks, time_frame = user_input
     prog = st.progress(0)
     positions = POSITIONS_WITH_PICK if include_picks and not starters_only else POSITIONS
 
@@ -295,8 +298,10 @@ def render(user_input: UserInput) -> None:
         * League ID: {league.id}
         * Type: {league.league_type}
         * Scoring: {league.scoring_type}
+        * Bonus TEP: {league.bonus_tep or "None"}
         * Teams: {league.team_count}
         * Status: {league.status}
+        * Roster Positions: {", ".join(league.roster_positions)}
         """)
 
     _ = prog.progress(10)
@@ -405,31 +410,47 @@ def render(user_input: UserInput) -> None:
             hide_index=True,
         )
 
-    fa_rankings_df = (
-        get_rosters_df(
-            league.id, ranking_set, rankings_df, include_picks=include_picks, include_drafted=include_drafted
+    with st.expander("Free Agents", expanded=False):
+        fa_rankings_df = (
+            get_rosters_df(
+                league.id, ranking_set, rankings_df, include_picks=include_picks, include_drafted=include_drafted
+            )
+            .filter(pl.col("owner_name").is_null(), pl.col("value").is_not_null(), pl.col("position").is_in(POSITIONS))
+            .sort("value", descending=True, nulls_last=True)
         )
-        .filter(pl.col("owner_name").is_null(), pl.col("value").is_not_null(), pl.col("position").is_in(POSITIONS))
-        .sort("value", descending=True, nulls_last=True)
-    )
-    _ = st.markdown("## Free Agents")
-    _ = st.dataframe(
-        fa_rankings_df,
-        column_config={
-            "full_name": st.column_config.Column("Player", width="small"),
-            "position": st.column_config.Column("Position", width="small"),
-            "value": st.column_config.NumberColumn("Value", width="small"),
-            "trend": st.column_config.NumberColumn("Trend", format="%.2f", width="small", help=HELP_TEXT_TREND),
-            "value_history": st.column_config.AreaChartColumn("Value History", width="large"),
-            "owner_name": None,
-            "sleeper_id": None,
-            "is_starter": None,
-            "player_id": None,
-        },
-        column_order=("full_name", "position", "value", "trend", "value_history"),
-        hide_index=True,
-        use_container_width=True,
-    )
+        _ = st.dataframe(
+            fa_rankings_df,
+            column_config={
+                "full_name": st.column_config.Column("Player", width="small"),
+                "position": st.column_config.Column("Position", width="small"),
+                "value": st.column_config.NumberColumn("Value", width="small"),
+                "trend": st.column_config.NumberColumn("Trend", format="%.2f", width="small", help=HELP_TEXT_TREND),
+                "value_history": st.column_config.AreaChartColumn("Value History", width="large"),
+                "owner_name": None,
+                "sleeper_id": None,
+                "is_starter": None,
+                "player_id": None,
+            },
+            column_order=("full_name", "position", "value", "trend", "value_history"),
+            hide_index=True,
+            use_container_width=True,
+        )
+
+    with st.expander("llm assistance", expanded=False):
+        llm_league = {
+            "league": league.model_dump(),
+            "my_team": (
+                roster_df.filter(pl.col("owner_name") == current_username).select("full_name").to_series().to_list()
+            ),
+            "players_by_owner": {
+                owner: roster_df.filter(pl.col("owner_name") == owner).select("full_name").to_series().to_list()
+                for owner in owners
+                if owner != current_username
+            },
+            "top_free_agents": fa_rankings_df.select("full_name").limit(15).to_series().to_list(),
+        }
+
+        st.code(dumps(llm_league, indent=2), language="json")
 
 
 if __name__ == "__main__":
