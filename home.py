@@ -19,6 +19,7 @@ from dynasty.util import generate_id
 
 POSITIONS: Final[Iterable[str]] = ("QB", "RB", "WR", "TE")
 POSITIONS_WITH_PICK: Final[Iterable[str]] = (*POSITIONS, "PICK")
+IR_POSITIONS: Final[Iterable[str]] = ("IR", "NA", "O", "PUP", "NFI", "S")
 DATA_DIR: Final[Path] = Path(__file__).resolve().parent.joinpath("data")
 
 HELP_TEXT_TREND: Final[str] = """
@@ -162,12 +163,21 @@ def get_players() -> pl.DataFrame:
     with SleeperService() as sleeper:
         players = sleeper.get_players()
 
-    player_arr = [(player.full_name, str(player.player_id), player.sleeper_id, player.position) for player in players]
+    player_arr = [
+        (player.full_name, str(player.player_id), player.sleeper_id, player.position, player.injury_status)
+        for player in players
+    ]
 
     return pl.DataFrame(
         player_arr,
         orient="row",
-        schema={"full_name": pl.String, "player_id": pl.String, "sleeper_id": pl.String, "position": pl.String},
+        schema={
+            "full_name": pl.String,
+            "player_id": pl.String,
+            "sleeper_id": pl.String,
+            "position": pl.String,
+            "injury_status": pl.String,
+        },
     )
 
 
@@ -432,6 +442,38 @@ def render(user_input: UserInput) -> None:
                 "player_id": None,
             },
             column_order=("full_name", "position", "value", "trend", "value_history"),
+            hide_index=True,
+            use_container_width=True,
+        )
+
+    with st.expander("Top IR Stashes", expanded=False):
+        fa_rankings_df = (
+            get_rosters_df(
+                league.id, ranking_set, rankings_df, include_picks=include_picks, include_drafted=include_drafted
+            )
+            .filter(
+                pl.col("owner_name").is_null(),
+                pl.col("value").is_not_null(),
+                pl.col("position").is_in(POSITIONS),
+                pl.col("injury_status").is_in(IR_POSITIONS),
+            )
+            .sort("value", descending=True, nulls_last=True)
+        )
+        _ = st.dataframe(
+            fa_rankings_df,
+            column_config={
+                "full_name": st.column_config.Column("Player", width="small"),
+                "position": st.column_config.Column("Position", width="small"),
+                "value": st.column_config.NumberColumn("Value", width="small"),
+                "injury_status": st.column_config.Column("Injury Status", width="small"),
+                "trend": st.column_config.NumberColumn("Trend", format="%.2f", width="small", help=HELP_TEXT_TREND),
+                "value_history": st.column_config.AreaChartColumn("Value History", width="large"),
+                "owner_name": None,
+                "sleeper_id": None,
+                "is_starter": None,
+                "player_id": None,
+            },
+            column_order=("full_name", "position", "value", "trend", "injury_status", "value_history"),
             hide_index=True,
             use_container_width=True,
         )

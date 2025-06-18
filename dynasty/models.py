@@ -104,6 +104,47 @@ class PlayerPosition(StrEnum):
             return None
 
 
+INJURY_STATUS_MAP: Final[Mapping[str, str]] = {
+    "PROBABLE": "P",
+    "PROB": "P",
+    "QUESTIONABLE": "Q",
+    "QUESTION": "Q",
+    "DOUBT": "D",
+    "DOUBTFUL": "D",
+    "OUT": "O",
+    "SUSPENDED": "S",
+    "SUSP": "S",
+    "SUSPENSION": "S",
+    "IR": "IR",
+    "PUP": "PUP",
+    "COVID": "COV",
+    "COVID19": "COV",
+    "COVID-19": "COV",
+    "RESERVE/COVID-19": "COV",
+}
+
+
+class InjuryStatus(StrEnum):
+    Probable = "P"
+    Questionable = "Q"
+    Doubtful = "D"
+    Out = "O"
+    Suspended = "S"
+    IR = "IR"
+    PUP = "PUP"
+    Covid19 = "COV"
+
+    @classmethod
+    def from_str(cls, value: str) -> Self | None:
+        # Normalize input: strip whitespace, uppercase, map common aliases
+        value = re.sub(r"^\d+|\s+|\d+$", "", value).upper()
+        value = INJURY_STATUS_MAP.get(value, value)
+        try:
+            return cls(value)
+        except ValueError:
+            return None
+
+
 TEAM_MAP: Final[Mapping[str, str]] = {
     "SFO": "SF",
     "TBB": "TB",
@@ -189,6 +230,7 @@ class Player(SQLModel, table=True):
     weight: int
     years_exp: int
     status: str | None
+    injury_status: InjuryStatus | None
     active: bool
     espn_id: int | None
     fantasy_data_id: int | None

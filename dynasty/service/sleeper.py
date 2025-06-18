@@ -5,6 +5,7 @@ from typing import Final, Literal, NotRequired, Self, TypedDict
 import requests
 
 from dynasty.models import (
+    InjuryStatus,
     League,
     LeagueType,
     Player,
@@ -278,6 +279,10 @@ class SleeperService:
         if not position or not height or not weight:
             return None
 
+        injury_status = None
+        if injury_status_val := player_dict.get("injury_status"):
+            injury_status = InjuryStatus.from_str(injury_status_val)
+
         return Player(
             player_id=generate_id(full_name),
             first_name=player_dict["first_name"],
@@ -294,6 +299,7 @@ class SleeperService:
             weight=weight,
             years_exp=player_dict["years_exp"],
             status=player_dict["status"],
+            injury_status=injury_status,
             active=player_dict["active"],
             sleeper_id=sleeper_id,
             fantasy_data_id=player_dict["fantasy_data_id"],
