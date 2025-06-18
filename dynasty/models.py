@@ -275,7 +275,7 @@ class League(BaseModel):
     status: StatusType
     scoring_type: ScoringType
     bonus_tep: TEPScoringType | None
-    scoring_settings: dict[str, float]
+    scoring_settings: dict[str, dict[str, float]]
     roster_positions: Sequence[PlayerPosition]
 
 

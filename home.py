@@ -447,7 +447,7 @@ def render(user_input: UserInput) -> None:
         )
 
     with st.expander("Top IR Stashes", expanded=False):
-        fa_rankings_df = (
+        ir_fa_rankings_df = (
             get_rosters_df(
                 league.id, ranking_set, rankings_df, include_picks=include_picks, include_drafted=include_drafted
             )
@@ -460,7 +460,7 @@ def render(user_input: UserInput) -> None:
             .sort("value", descending=True, nulls_last=True)
         )
         _ = st.dataframe(
-            fa_rankings_df,
+            ir_fa_rankings_df,
             column_config={
                 "full_name": st.column_config.Column("Player", width="small"),
                 "position": st.column_config.Column("Position", width="small"),

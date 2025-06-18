@@ -337,9 +337,215 @@ class SleeperService:
             status=StatusType.from_str(league_dict["status"]),
             scoring_type=scoring_type,
             bonus_tep=bonus_tep,
-            scoring_settings=league_dict["scoring_settings"],
+            scoring_settings=SleeperService.convert_scoring_settings(league_dict["scoring_settings"], roster_positions),
             roster_positions=roster_positions,
         )
+
+    @staticmethod
+    def convert_scoring_settings(
+        scoring_settings: dict[str, float], roster_positions: list[PlayerPosition]
+    ) -> dict[str, dict[str, float]]:
+        passing_keys = {
+            "pass_yd",
+            "pass_td",
+            "pass_fd",
+            "pass_2pt",
+            "pass_int",
+            "pass_cmp_40p",
+            "pass_td_40p",
+            "pass_td_50p",
+        }
+        rushing_keys = {
+            "rush_yd",
+            "rush_td",
+            "rush_fd",
+            "rush_2pt",
+            "rush_40p",
+            "rush_td_40p",
+            "rush_td_50p",
+        }
+        receiving_keys = {
+            "rec",
+            "rec_yd",
+            "rec_td",
+            "rec_fd",
+            "rec_2pt",
+            "rec_40p",
+            "rec_td_40p",
+            "rec_td_50p",
+            "bonus_rec_te",
+        }
+        kicking_keys = {
+            "fgm_0_19",
+            "fgm_20_29",
+            "fgm_30_39",
+            "fgm_40_49",
+            "fgm_50_59",
+            "fgm_60p",
+            "xpm",
+            "xpmiss",
+            "fgmiss",
+        }
+        defense_keys = {
+            "def_td",
+            "pts_allow_0",
+            "pts_allow_1_6",
+            "pts_allow_7_13",
+            "pts_allow_14_20",
+            "pts_allow_21_27",
+            "pts_allow_28_34",
+            "pts_allow_35p",
+            "sack",
+            "int",
+            "fum_rec",
+            "safe",
+            "ff",
+            "blk_kick",
+            "st_td",
+            "st_ff",
+            "st_fum_rec",
+            "def_pr_yd",
+            "def_kr_yd",
+            "def_st_td",
+            "def_st_ff",
+            "def_st_fum_rec",
+            "fum_rec_td",
+            "fum",
+        }
+        misc_keys = {
+            "fum_lost",
+            "fum_rec_td",
+        }
+
+        # Mapping from JSON keys to labeled names
+        json_to_label = {
+            "sack": "sacks",
+            "fgm_40_49": "fg made (40-49 yards)",
+            "bonus_rec_te": "reception bonus - te",
+            "pass_int": "pass intercepted",
+            "pts_allow_0": "points allowed 0",
+            "pass_2pt": "2-pt conversion passing",
+            "st_td": "special teams td",
+            "def_pr_yd": "punt return yards",
+            "rec_td": "receiving td",
+            "fgm_30_39": "fg made (30-39 yards)",
+            "fgm_50_59": "fg made (50-59 yards)",
+            "xpmiss": "pat missed",
+            "rush_td_50p": "50+ yard rush td bonus",
+            "rush_td": "rushing td",
+            "def_kr_yd": "kick return yards",
+            "pass_td_40p": "40+ yard pass td bonus",
+            "rec_2pt": "2-pt conversion receiving",
+            "rush_fd": "rushing 1st down",
+            "st_fum_rec": "special teams fumble recovery",
+            "fgmiss": "fg missed",
+            "ff": "forced fumble",
+            "rec": "reception",
+            "pts_allow_14_20": "points allowed 14-20",
+            "fgm_0_19": "fg made (0-19 yards)",
+            "int": "interceptions",
+            "def_st_fum_rec": "special teams player fumble recovery",
+            "fum_lost": "fumble lost",
+            "pts_allow_1_6": "points allowed 1-6",
+            "rec_fd": "receiving 1st down",
+            "kr_yd": "player kick return yards",
+            "fgm_60p": "fg made (60+ yards)",
+            "fgm_20_29": "fg made (20-29 yards)",
+            "xpm": "pat made",
+            "pass_td_50p": "50+ yard pass td bonus",
+            "rec_40p": "40+ yard reception bonus",
+            "rush_2pt": "2-pt conversion rushing",
+            "fum_rec": "fumble recovery",
+            "def_st_td": "special teams player td",
+            "pass_cmp_40p": "40+ yard completion bonus",
+            "def_td": "defense td",
+            "pass_fd": "passing 1st down",
+            "rec_td_40p": "40+ yard reception td bonus",
+            "safe": "safety",
+            "pass_yd": "passing yards",
+            "rec_td_50p": "50+ yard reception td bonus",
+            "blk_kick": "blocked kick",
+            "pass_td": "passing td",
+            "rush_yd": "rushing yards",
+            "rush_40p": "40+ yard rush bonus",
+            "pr_yd": "player punt return yards",
+            "pts_allow_28_34": "points allowed 28-34",
+            "pts_allow_35p": "points allowed 35+",
+            "fum_rec_td": "fumble recovery td",
+            "rec_yd": "receiving yards",
+            "rush_td_40p": "40+ yard rush td bonus",
+            "def_st_ff": "special teams player forced fumble",
+            "pts_allow_7_13": "points allowed 7-13",
+            "st_ff": "special teams forced fumble",
+        }
+
+        labeled_json: dict[str, dict[str, float]] = {}
+
+        labeled_json["passing"] = passing = {}
+        for key in passing_keys:
+            label = json_to_label.get(key)
+            if label and (value := scoring_settings.get(key)):
+                passing[label] = value
+
+        labeled_json["receiving"] = receiving = {}
+        for key in receiving_keys:
+            label = json_to_label.get(key)
+            if label and (value := scoring_settings.get(key)):
+                receiving[label] = value
+
+        labeled_json["rushing"] = rushing = {}
+        for key in rushing_keys:
+            label = json_to_label.get(key)
+            if label and (value := scoring_settings.get(key)):
+                rushing[label] = value
+
+        # Remove kicking stats if K not in roster
+        if PlayerPosition.K in roster_positions:
+            labeled_json["kicking"] = kicking = {}
+            for key in kicking_keys:
+                label = json_to_label.get(key)
+                if label and (value := scoring_settings.get(key)):
+                    kicking[label] = value
+
+        # Remove defense/special teams if DST not in roster
+        if PlayerPosition.DST in roster_positions:
+            labeled_json["dst"] = dst = {}
+            for key in defense_keys:
+                label = json_to_label.get(key)
+                if label and (value := scoring_settings.get(key)):
+                    dst[label] = value
+
+        labeled_json["misc"] = misc = {}
+        for key in misc_keys:
+            label = json_to_label.get(key)
+            if label and (value := scoring_settings.get(key)):
+                misc[label] = value
+
+        # test = {
+        #     "passing": {
+        #         "2-pt conversion passing": 2.0,
+        #         "passing yards": 0.04,
+        #         "pass intercepted": -2.0,
+        #         "passing td": 4.0,
+        #     },
+        #     "receiving": {
+        #         "receiving 1st down": 0.5,
+        #         "reception bonus - te": 1.0,
+        #         "receiving yards": 0.1,
+        #         "receiving td": 6.0,
+        #         "2-pt conversion receiving": 2.0,
+        #         "reception": 1.0,
+        #     },
+        #     "rushing": {
+        #         "2-pt conversion rushing": 2.0,
+        #         "rushing 1st down": 0.5,
+        #         "rushing td": 6.0,
+        #         "rushing yards": 0.1,
+        #     },
+        #     "misc": {"fumble lost": -1.0, "fumble recovery td": 6.0},
+        # }
+
+        return labeled_json
 
     def convert_roster_data(
         self,
