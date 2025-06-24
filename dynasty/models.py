@@ -269,10 +269,11 @@ class Pick(SQLModel, table=True):
 
 class League(BaseModel):
     id: str
-    league_type: LeagueType
     name: str
+    season: int
     team_count: int
     status: StatusType
+    league_type: LeagueType
     scoring_type: ScoringType
     bonus_tep: TEPScoringType | None
     scoring_settings: dict[str, dict[str, float]]
