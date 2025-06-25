@@ -79,6 +79,8 @@ def get_rosters_df(
     rosters_df = pl.DataFrame(
         arr, orient="row", schema={"owner_name": pl.String, "sleeper_id": pl.String, "is_starter": pl.Boolean}
     )
+    # Remove any duplicate entries from roster data
+    rosters_df = rosters_df.unique(subset=["owner_name", "sleeper_id"], keep="first")
     rosters_df = rosters_df.join(_players_df, on="sleeper_id", how="full", coalesce=True)
 
     if not include_picks:
@@ -348,6 +350,7 @@ def render(user_input: UserInput) -> None:
             "value_history",
         )
         .filter(pl.col("full_name").is_not_null())
+        .unique(subset=["player_id", "owner_name"], keep="first")  # Remove duplicates
         .sort("value", descending=True, nulls_last=True)
     )
 
@@ -426,6 +429,7 @@ def render(user_input: UserInput) -> None:
                 league.id, ranking_set, rankings_df, include_picks=include_picks, include_drafted=include_drafted
             )
             .filter(pl.col("owner_name").is_null(), pl.col("value").is_not_null(), pl.col("position").is_in(POSITIONS))
+            .unique(subset=["player_id"], keep="first")  # Remove duplicates
             .sort("value", descending=True, nulls_last=True)
         )
         _ = st.dataframe(
@@ -457,6 +461,7 @@ def render(user_input: UserInput) -> None:
                 pl.col("position").is_in(POSITIONS),
                 pl.col("injury_status").is_in(IR_POSITIONS),
             )
+            .unique(subset=["player_id"], keep="first")  # Remove duplicates
             .sort("value", descending=True, nulls_last=True)
         )
         _ = st.dataframe(
