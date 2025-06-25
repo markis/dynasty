@@ -1,3 +1,5 @@
+"""Test utility functions for dynasty league management."""
+
 from uuid import UUID
 
 import pytest
@@ -16,6 +18,7 @@ from dynasty.util import generate_id, get_placement, normalize_name
     ],
 )
 def test_generate_id(value: str, expected: UUID) -> None:
+    """Test the ID generation function for player names."""
     assert generate_id(value) == expected
 
 
@@ -36,6 +39,7 @@ def test_generate_id(value: str, expected: UUID) -> None:
     ],
 )
 def test_normalize_name(value: str, expected: UUID) -> None:
+    """Test the name normalization function."""
     assert normalize_name(value) == expected
 
 
@@ -50,6 +54,7 @@ def test_normalize_name(value: str, expected: UUID) -> None:
     ],
 )
 def test_positions(value: str, expected: PlayerPosition) -> None:
+    """Test the PlayerPosition.from_str method for various position strings."""
     assert PlayerPosition.from_str(value) == expected
 
 
@@ -72,4 +77,5 @@ def test_positions(value: str, expected: PlayerPosition) -> None:
     ],
 )
 def test_placement(value: int, expected: str) -> None:
+    """Test the get_placement function for various integer values."""
     assert get_placement(value) == expected

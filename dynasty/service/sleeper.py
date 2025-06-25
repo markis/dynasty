@@ -1,3 +1,5 @@
+"""SleeperService will interact with the Sleeper API."""
+
 from collections.abc import Container, Iterable, Mapping, Sequence
 from types import TracebackType
 from typing import Final, Literal, NotRequired, Self, TypedDict
@@ -26,6 +28,14 @@ SLEEPER_IDS_TO_IGNORE = {
 
 
 class SleeperPlayerDict(TypedDict):
+    """
+    Type definition for Sleeper API player data response.
+
+    Represents the structure of player data returned from the Sleeper API,
+    containing comprehensive player information including biographical data,
+    physical attributes, and external service IDs.
+    """
+
     player_id: str
     first_name: str
     last_name: str
@@ -50,6 +60,7 @@ class SleeperPlayerDict(TypedDict):
     weight: str
     years_exp: int
     status: str
+    injury_status: NotRequired[str | None]  # Injury status, if applicable
     active: bool
     fantasy_data_id: int
     sportradar_id: str
@@ -64,6 +75,13 @@ class SleeperPlayerDict(TypedDict):
 
 
 class SleeperRosterSettings(TypedDict):
+    """
+    Type definition for Sleeper API roster settings data.
+
+    Contains performance metrics and settings for a roster
+    within a Sleeper fantasy football league.
+    """
+
     wins: int
     waiver_position: int
     waiver_budget_used: int
@@ -74,21 +92,35 @@ class SleeperRosterSettings(TypedDict):
 
 
 class SleeperRosterDict(TypedDict):
-    # taxi: None
+    """
+    Type definition for Sleeper API roster data response.
+
+    Represents the structure of roster data returned from the Sleeper API,
+    containing team composition, ownership, and performance information.
+    """
+
+    taxi: None  # unused
     starters: list[str]
     settings: SleeperRosterSettings
     roster_id: int
     reserve: str | None
     players: list[str]
-    # player_map: dict[str, str]
+    player_map: dict[str, str]
     owner_id: str
-    # metadata: dict[str, str]
+    metadata: dict[str, str]  # unused
     league_id: str
     keepers: list[str]
-    # co_owners: list[str]
+    co_owners: list[str]  # unused
 
 
 class SleeperLeagueDict(TypedDict):
+    """
+    Type definition for Sleeper API league data response.
+
+    Represents the structure of league data returned from the Sleeper API,
+    containing league configuration, settings, and status information.
+    """
+
     last_transaction_id: None
     total_rosters: int
     roster_positions: list[str]
@@ -122,6 +154,13 @@ class SleeperLeagueDict(TypedDict):
 
 
 class SleeperUserMetadataDict(TypedDict, total=False):
+    """
+    Type definition for Sleeper API user metadata.
+
+    Contains optional user preferences and settings for notifications
+    and other user-specific configurations.
+    """
+
     mention_pn: str
     archived: str | None
     allow_pn: str
@@ -142,6 +181,13 @@ class SleeperUserMetadataDict(TypedDict, total=False):
 
 
 class SleeperUserDict(TypedDict):
+    """
+    Type definition for Sleeper API user data response.
+
+    Represents the structure of user data returned from the Sleeper API,
+    containing user identification and display information.
+    """
+
     user_id: str
     settings: dict[str, str] | None
     metadata: SleeperUserMetadataDict
@@ -153,6 +199,13 @@ class SleeperUserDict(TypedDict):
 
 
 class SleeperTradedPickDict(TypedDict):
+    """
+    Type definition for Sleeper API traded pick data.
+
+    Represents the structure of traded draft pick information,
+    tracking ownership changes of future draft picks.
+    """
+
     previous_owner_id: int
     owner_id: int
     roster_id: int
@@ -161,6 +214,13 @@ class SleeperTradedPickDict(TypedDict):
 
 
 class SeasonMetaDict(TypedDict):
+    """
+    Type definition for Sleeper API season metadata.
+
+    Contains current season information and timing data
+    for the NFL season and fantasy football context.
+    """
+
     week: int
     season_type: Literal["pre", "post", "regular"]
     season_start_date: str  # ISO date string, e.g., "2020-09-10"
@@ -173,6 +233,13 @@ class SeasonMetaDict(TypedDict):
 
 
 class SleeperDraftSettingsDict(TypedDict):
+    """
+    Type definition for Sleeper API draft settings.
+
+    Contains draft configuration including roster slot requirements
+    and draft timing settings.
+    """
+
     teams: int
     slots_wr: int
     slots_te: int
@@ -187,12 +254,26 @@ class SleeperDraftSettingsDict(TypedDict):
 
 
 class SleeperDraftMetadataDict(TypedDict):
+    """
+    Type definition for Sleeper API draft metadata.
+
+    Contains additional draft information including scoring type
+    and descriptive information about the draft.
+    """
+
     scoring_type: str
     name: str
     description: str
 
 
 class SleeperDraftDict(TypedDict):
+    """
+    Type definition for Sleeper API draft data response.
+
+    Represents the structure of draft data returned from the Sleeper API,
+    containing draft configuration, status, and metadata.
+    """
+
     type: str
     status: str
     start_time: int
@@ -212,6 +293,13 @@ class SleeperDraftDict(TypedDict):
 
 
 class SleeperDraftPickMetadataDict(TypedDict):
+    """
+    Type definition for Sleeper API draft pick metadata.
+
+    Contains detailed information about a specific draft pick,
+    including player information at the time of selection.
+    """
+
     team: str
     status: str
     sport: str
@@ -225,6 +313,13 @@ class SleeperDraftPickMetadataDict(TypedDict):
 
 
 class SleeperDraftPickDict(TypedDict):
+    """
+    Type definition for Sleeper API draft pick data response.
+
+    Represents the structure of individual draft pick data,
+    containing selection details and player information.
+    """
+
     player_id: str
     picked_by: str
     roster_id: str
@@ -237,18 +332,43 @@ class SleeperDraftPickDict(TypedDict):
 
 
 class SleeperService:
-    """Service for getting Sleeper api."""
+    """
+    Service class for interacting with the Sleeper fantasy football API.
+
+    Provides methods to retrieve player data, league information, roster details,
+    and draft information from the Sleeper platform. Handles data conversion
+    from Sleeper's API format to the application's internal data models.
+
+    Attributes:
+        session: HTTP session for making API requests
+        BASE_URL: Base URL for the Sleeper API
+
+    """
 
     session: Final[requests.Session]
     BASE_URL: Final[str] = "https://api.sleeper.app/v1"
     __current_state: SeasonMetaDict | None = None
 
     def __init__(self, session: requests.Session | None = None) -> None:
+        """
+        Initialize the SleeperService with an optional HTTP session.
+
+        Args:
+            session: Optional HTTP session for making requests. If None, a new session is created.
+
+        """
         if session is None:
             session = requests.Session()
         self.session = session
 
     def __enter__(self) -> Self:
+        """
+        Enter the context manager and return the service instance.
+
+        Returns:
+            Self instance for use in context manager
+
+        """
         return self
 
     def __exit__(
@@ -257,14 +377,37 @@ class SleeperService:
         exc_val: BaseException | None,
         exc_tb: TracebackType | None,
     ) -> None:
+        """
+        Exit the context manager and close the session.
+
+        Args:
+            exc_type: Exception type if an exception occurred
+            exc_val: Exception value if an exception occurred
+            exc_tb: Exception traceback if an exception occurred
+
+        """
         self.close()
 
     def close(self) -> None:
+        """Close the HTTP session to free resources."""
         self.session.close()
 
     @staticmethod
     def convert_player_data(sleeper_id: str, player_dict: SleeperPlayerDict) -> Player | None:
-        """Convert Sleeper player data to Player model"""
+        """
+        Convert Sleeper API player data to internal Player model.
+
+        Transforms player data from Sleeper's format into the application's
+        Player model, handling data validation and normalization.
+
+        Args:
+            sleeper_id: The Sleeper platform ID for the player
+            player_dict: Player data from Sleeper API
+
+        Returns:
+            Player model instance, or None if data is invalid or should be ignored
+
+        """
         if sleeper_id in SLEEPER_IDS_TO_IGNORE:
             return None
         if not (full_name := player_dict.get("full_name")):
@@ -316,7 +459,20 @@ class SleeperService:
 
     @staticmethod
     def convert_league_data(league_dict: SleeperLeagueDict, season: int) -> League | None:
-        """Convert Sleeper league data to League model"""
+        """
+        Convert Sleeper API league data to internal League model.
+
+        Transforms league data from Sleeper's format into the application's
+        League model, determining league type and scoring settings.
+
+        Args:
+            league_dict: League data from Sleeper API
+            season: The season year for this league
+
+        Returns:
+            League model instance, or None if data is invalid
+
+        """
         is_super_flex = "SUPER_FLEX" in league_dict["roster_positions"]
         league_type: LeagueType = LeagueType.SuperFlex if is_super_flex else LeagueType.Standard
 
@@ -344,8 +500,23 @@ class SleeperService:
 
     @staticmethod
     def convert_scoring_settings(
-        scoring_settings: dict[str, float], roster_positions: list[PlayerPosition]
+        scoring_settings: dict[str, float],
+        roster_positions: list[PlayerPosition],
     ) -> dict[str, dict[str, float]]:
+        """
+        Convert Sleeper scoring settings to a categorized dictionary.
+
+        Organizes scoring settings by category (passing, rushing, receiving, etc.)
+        and provides human-readable labels for each scoring rule.
+
+        Args:
+            scoring_settings: Raw scoring settings from Sleeper API
+            roster_positions: List of roster positions to determine applicable categories
+
+        Returns:
+            Dictionary organized by scoring category with labeled scoring rules
+
+        """
         # Mapping from JSON keys to labeled names
         json_to_label = {
             "sack": "sacks",
@@ -517,7 +688,22 @@ class SleeperService:
         traded_picks: list[SleeperTradedPickDict],
         drafted: list[SleeperDraftPickDict],
     ) -> Roster:
-        """Convert Sleeper league data to League model"""
+        """
+        Convert Sleeper API roster data to internal Roster model.
+
+        Transforms roster data from Sleeper's format into the application's
+        Roster model, including traded picks and drafted players.
+
+        Args:
+            roster_dict: Roster data from Sleeper API
+            user_dict: User data for the roster owner
+            traded_picks: List of traded draft picks
+            drafted: List of drafted players
+
+        Returns:
+            Roster model instance with converted data
+
+        """
         starters_data = roster_dict.get("starters") or []
         players_data = roster_dict.get("players") or []
         starters = [int(sleeper_id) for sleeper_id in starters_data if sleeper_id and sleeper_id.isnumeric()]
@@ -565,6 +751,16 @@ class SleeperService:
         )
 
     def _current_state(self) -> SeasonMetaDict:
+        """
+        Get the current NFL season state from Sleeper API.
+
+        Retrieves and caches the current season metadata including
+        week, season type, and other timing information.
+
+        Returns:
+            Season metadata dictionary from Sleeper API
+
+        """
         if self.__current_state:
             return self.__current_state
 
@@ -574,10 +770,27 @@ class SleeperService:
         return meta_data
 
     def get_current_season(self) -> int:
+        """
+        Get the current NFL season year from Sleeper API.
+
+        Returns:
+            The current NFL season as an integer year
+
+        """
         state = self._current_state()
         return int(state["season"])
 
     def get_players(self) -> Iterable[Player]:
+        """
+        Get all NFL players from Sleeper API.
+
+        Retrieves the complete player database from Sleeper and converts
+        each player to the internal Player model format.
+
+        Returns:
+            Iterable of Player model instances
+
+        """
         url = f"{self.BASE_URL}/players/nfl"
         page = self.session.get(url)
         sleeper_players: Mapping[str, SleeperPlayerDict] = page.json()
@@ -588,14 +801,38 @@ class SleeperService:
         )
 
     def get_sleeper_id(self, username: str) -> str | None:
+        """
+        Get the Sleeper user ID for a given username.
+
+        Args:
+            username: The Sleeper username to look up
+
+        Returns:
+            The Sleeper user ID, or None if user not found
+
+        """
         url = f"{self.BASE_URL}/user/{username}/"
         page = self.session.get(url)
         user: dict[str, str] | None
         if user := page.json():
-            return user["user_id"]
+            return str(user["user_id"])
         return None
 
     def get_leagues(self, user_id: str, *, season: int | None = None) -> Iterable[League]:
+        """
+        Get all leagues for a user from Sleeper API.
+
+        Retrieves all leagues that a user is participating in for a given season
+        and converts them to the internal League model format.
+
+        Args:
+            user_id: The Sleeper user ID
+            season: The season year (defaults to current season)
+
+        Returns:
+            Iterable of League model instances
+
+        """
         if not season:
             season = self.get_current_season()
         url = f"{self.BASE_URL}/user/{user_id}/leagues/nfl/{season}"
@@ -604,8 +841,27 @@ class SleeperService:
         return (league for league_dict in leagues if (league := self.convert_league_data(league_dict, season)))
 
     def get_drafts(
-        self, user_id: str, *, season: int | None = None, draft_status: Container[str] = frozenset(["complete"])
+        self,
+        user_id: str,
+        *,
+        season: int | None = None,
+        draft_status: Container[str] = frozenset(["complete"]),
     ) -> Iterable[SleeperDraftDict]:
+        """
+        Get all drafts for a user from Sleeper API.
+
+        Retrieves draft information for all leagues a user participated in
+        for a given season, filtered by draft status.
+
+        Args:
+            user_id: The Sleeper user ID
+            season: The season year (defaults to current season)
+            draft_status: Set of draft statuses to include (defaults to "complete")
+
+        Returns:
+            Iterable of draft dictionaries matching the status filter
+
+        """
         if not season:
             season = self.get_current_season()
         url = f"{self.BASE_URL}/user/{user_id}/drafts/nfl/{season}"
@@ -614,8 +870,27 @@ class SleeperService:
         return (draft for draft in drafts if draft["status"] in draft_status)
 
     def get_rosters(
-        self, league_id: str, *, include_picks: bool = True, include_drafted: bool = True
+        self,
+        league_id: str,
+        *,
+        include_picks: bool = True,
+        include_drafted: bool = True,
     ) -> Sequence[Roster]:
+        """
+        Get all rosters for a league from Sleeper API.
+
+        Retrieves roster information for all teams in a league, optionally
+        including traded picks and drafted players.
+
+        Args:
+            league_id: The Sleeper league ID
+            include_picks: Whether to include traded draft picks
+            include_drafted: Whether to include drafted players
+
+        Returns:
+            Sequence of Roster model instances for all teams in the league
+
+        """
         url = f"{self.BASE_URL}/league/{league_id}/rosters"
         page = self.session.get(url)
         rosters: list[SleeperRosterDict] = page.json()
@@ -624,11 +899,11 @@ class SleeperService:
         page = self.session.get(url)
         users: list[SleeperUserDict] = page.json()
 
-        picks = []
+        picks: list[SleeperTradedPickDict] = []
         if include_picks:
             drafts_url = f"{self.BASE_URL}/league/{league_id}/traded_picks"
             drafts_response = self.session.get(drafts_url)
-            picks: list[SleeperTradedPickDict] = drafts_response.json()
+            picks = drafts_response.json()
 
         drafted: list[SleeperDraftPickDict] = []
         if include_drafted:
@@ -641,6 +916,19 @@ class SleeperService:
             drafted = draft_response.json()
 
         def get_user(roster: SleeperRosterDict) -> SleeperUserDict:
+            """
+            Find user data for a roster owner.
+
+            Args:
+                roster: The roster dictionary
+
+            Returns:
+                User dictionary for the roster owner
+
+            Raises:
+                ValueError: If the user is not found
+
+            """
             for user in users:
                 if user["user_id"] == roster["owner_id"]:
                     return user

@@ -1,3 +1,10 @@
+"""
+Dynasty Rankings Streamlit App.
+
+This app provides an interactive interface for analyzing player rankings in dynasty fantasy football leagues.
+It allows users to view league information, player rankings, and roster details, including trends and values.
+"""
+
 from collections.abc import Iterable, Sequence
 from datetime import UTC, datetime, timedelta
 from json import dumps
@@ -29,6 +36,8 @@ A positive trend indicates an increasing value, while a negative trend indicates
 
 
 class UserInput(NamedTuple):
+    """User input for dynasty league analysis."""
+
     owner_id: str
     owner_name: str
     league: League
@@ -39,11 +48,25 @@ class UserInput(NamedTuple):
 
 
 def get_league_name(league: League) -> str:
+    """Get the name of the league for display purposes."""
     return league.name
 
 
 @st.cache_data(ttl=300)
 def get_leagues(sleeper_username: str) -> tuple[str, list[League]]:
+    """
+    Retrieve leagues for a given Sleeper username.
+
+    Fetches all leagues associated with a Sleeper username and caches
+    the results in Streamlit session state for performance.
+
+    Args:
+        sleeper_username: The Sleeper username to look up
+
+    Returns:
+        Tuple containing (sleeper_id, list_of_leagues). Returns ("", []) if user not found.
+
+    """
     with SleeperService() as sleeper:
         sleeper_id = sleeper.get_sleeper_id(sleeper_username)
         st.session_state["sleeper_id"] = sleeper_id
@@ -60,13 +83,51 @@ def get_leagues(sleeper_username: str) -> tuple[str, list[League]]:
 
 @st.cache_data(ttl=300)
 def get_rosters(league_id: str, *, include_drafted: bool) -> Sequence[Roster]:
+    """
+    Retrieve rosters for a given league ID.
+
+    Fetches roster information for all teams in a Sleeper league,
+    optionally including drafted players.
+
+    Args:
+        league_id: The Sleeper league ID
+        include_drafted: Whether to include recently drafted players
+
+    Returns:
+        Sequence of Roster objects for all teams in the league
+
+    """
     with SleeperService() as sleeper:
         return sleeper.get_rosters(league_id, include_drafted=include_drafted)
 
 
 def get_rosters_df(
-    league_id: str, _ranking_set: RankingSet, _players_df: pl.DataFrame, *, include_picks: bool, include_drafted: bool
+    league_id: str,
+    _ranking_set: RankingSet,
+    _players_df: pl.DataFrame,
+    *,
+    include_picks: bool,
+    include_drafted: bool,
 ) -> pl.DataFrame:
+    """
+    Retrieve and process roster data into a Polars DataFrame.
+
+    Converts roster data from the Sleeper API into a structured DataFrame
+    with player information, ownership, and starter status. Optionally
+    includes draft picks with their estimated values.
+
+    Args:
+        league_id: The Sleeper league ID
+        _ranking_set: The ranking set being used (for pick valuations)
+        _players_df: DataFrame containing player information and values
+        include_picks: Whether to include draft picks in the output
+        include_drafted: Whether to include recently drafted players
+
+    Returns:
+        DataFrame with columns for owner_name, player info, starter status, and values
+
+    """
+
     def is_starter(roster: Roster, sleeper_id: int) -> bool:
         return sleeper_id in roster.starters
 
@@ -77,7 +138,9 @@ def get_rosters_df(
         for sleeper_id in roster.players
     ]
     rosters_df = pl.DataFrame(
-        arr, orient="row", schema={"owner_name": pl.String, "sleeper_id": pl.String, "is_starter": pl.Boolean}
+        arr,
+        orient="row",
+        schema={"owner_name": pl.String, "sleeper_id": pl.String, "is_starter": pl.Boolean},
     )
     # Remove any duplicate entries from roster data
     rosters_df = rosters_df.unique(subset=["owner_name", "sleeper_id"], keep="first")
@@ -112,14 +175,23 @@ def get_rosters_df(
 
 @st.cache_data(ttl=300)
 def get_rankings(league_type: LeagueType, ranking_set: RankingSet, time_frame: timedelta) -> pl.DataFrame:
-    """Retrieve player rankings from database or CSV file.
+    """
+    Retrieve player rankings from the database within a specified time frame.
+
+    Fetches historical ranking data from the database for a specific league type
+    and ranking source, limited to the specified time window.
 
     Args:
-        league_type: Type of league (e.g., dynasty, redraft)
-        ranking_set: Set of rankings to retrieve
+        league_type: The league format (Standard or SuperFlex)
+        ranking_set: The source of rankings (KeepTradeCut, DynastyProcess, etc.)
+        time_frame: How far back to retrieve rankings data
 
     Returns:
-        DataFrame containing player rankings with player_id, date, and value columns
+        DataFrame with player_id, date, and value columns
+
+    Raises:
+        ValueError: If PSQL_URL environment variable is not set
+
     """
     psql_url = environ.get("PSQL_URL")
     if psql_url is None:
@@ -144,8 +216,27 @@ def get_rankings(league_type: LeagueType, ranking_set: RankingSet, time_frame: t
 
 
 def get_players_and_rankings(
-    league_type: LeagueType, ranking_set: RankingSet, _players_df: pl.DataFrame, time_frame: timedelta
+    league_type: LeagueType,
+    ranking_set: RankingSet,
+    _players_df: pl.DataFrame,
+    time_frame: timedelta,
 ) -> pl.DataFrame:
+    """
+    Retrieve and process player rankings with trend analysis.
+
+    Combines ranking data with player information and calculates value trends
+    using linear regression on historical data points.
+
+    Args:
+        league_type: The league format (Standard or SuperFlex)
+        ranking_set: The source of rankings
+        _players_df: DataFrame containing player information
+        time_frame: Time window for historical data analysis
+
+    Returns:
+        DataFrame with player info, current values, value history, and trends
+
+    """
     rankings_df = get_rankings(league_type, ranking_set, time_frame=time_frame)
     rankings_df = (
         rankings_df.group_by("player_id")
@@ -162,6 +253,16 @@ def get_players_and_rankings(
 
 
 def get_players() -> pl.DataFrame:
+    """
+    Retrieve all NFL players from Sleeper and convert to DataFrame.
+
+    Fetches the complete player database from Sleeper and converts it
+    into a structured DataFrame for analysis and display.
+
+    Returns:
+        DataFrame with player names, IDs, positions, and injury status
+
+    """
     with SleeperService() as sleeper:
         players = sleeper.get_players()
 
@@ -185,8 +286,17 @@ def get_players() -> pl.DataFrame:
 
 def determine_trend(value_history: Iterable[Sequence[float]]) -> list[float]:
     """
-    Determine the linear regression slope for each sequence in value_history.
-    Returns a list of slopes indicating the trend direction for each sequence.
+    Calculate linear regression trends for player value histories.
+
+    Computes the slope of linear regression for each player's value history
+    to determine if their value is trending up, down, or staying flat.
+
+    Args:
+        value_history: Iterable of sequences containing historical values for each player
+
+    Returns:
+        List of trend slopes, where positive values indicate increasing value
+
     """
     min_no_for_trend = 2
 
@@ -203,6 +313,7 @@ def determine_trend(value_history: Iterable[Sequence[float]]) -> list[float]:
 
 
 def init() -> None:
+    """Initialize the Streamlit app with page configuration and session state."""
     st.set_page_config("Dynasty Rankings", ":football:", layout="wide")
     fields = frozenset({"sleeper_id", "sleeper", "leagues", "league", "league_id"})
 
@@ -214,10 +325,16 @@ def init() -> None:
 
 
 def get_user_input() -> UserInput | None:
-    """Get user input from Streamlit sidebar for dynasty league analysis.
+    """
+    Collect and validate user input from Streamlit sidebar.
+
+    Creates an interactive sidebar interface for users to select their
+    Sleeper username, league, ranking preferences, and analysis options.
+    Manages URL query parameters for shareable links.
 
     Returns:
-        UserInput object with user selections or None if required fields are missing
+        UserInput object with all user selections, or None if required inputs are missing
+
     """
     # Get username and validate leagues
     sleeper_username = st.sidebar.text_input("Sleeper Username", key="sleeper")
@@ -299,6 +416,17 @@ def get_user_input() -> UserInput | None:
 
 
 def render(user_input: UserInput) -> None:
+    """
+    Render the complete Streamlit dashboard with league analysis.
+
+    Creates a comprehensive dynasty fantasy football analysis dashboard
+    including team valuations, roster breakdowns, free agent rankings,
+    and IR stash recommendations.
+
+    Args:
+        user_input: UserInput object containing all user preferences and selections
+
+    """
     owner_id, current_username, league, ranking_set, starters_only, include_picks, time_frame = user_input
     prog = st.progress(0)
     positions = POSITIONS_WITH_PICK if include_picks and not starters_only else POSITIONS
@@ -325,7 +453,11 @@ def render(user_input: UserInput) -> None:
     include_drafted = league.status == StatusType.Drafting
     roster_df = (
         get_rosters_df(
-            league.id, ranking_set, rankings_df, include_picks=include_picks, include_drafted=include_drafted
+            league.id,
+            ranking_set,
+            rankings_df,
+            include_picks=include_picks,
+            include_drafted=include_drafted,
         )
         .join(players_df, on="player_id", how="full", coalesce=True, suffix="_new")
         .with_columns(
@@ -378,14 +510,18 @@ def render(user_input: UserInput) -> None:
     )
 
     league_values_long_df = league_values.select(pl.col(["owner_name", *positions])).unpivot(
-        index="owner_name", on=positions, variable_name="position", value_name="value"
+        index="owner_name",
+        on=positions,
+        variable_name="position",
+        value_name="value",
     )
 
     _ = prog.progress(100)
     _ = prog.empty()
 
     _ = st.plotly_chart(
-        px.bar(league_values_long_df, x="owner_name", y="value", color="position"), use_container_width=True
+        px.bar(league_values_long_df, x="owner_name", y="value", color="position"),
+        use_container_width=True,
     )
 
     _ = st.dataframe(
@@ -426,7 +562,11 @@ def render(user_input: UserInput) -> None:
     with st.expander("Free Agents", expanded=False):
         fa_rankings_df = (
             get_rosters_df(
-                league.id, ranking_set, rankings_df, include_picks=include_picks, include_drafted=include_drafted
+                league.id,
+                ranking_set,
+                rankings_df,
+                include_picks=include_picks,
+                include_drafted=include_drafted,
             )
             .filter(pl.col("owner_name").is_null(), pl.col("value").is_not_null(), pl.col("position").is_in(POSITIONS))
             .unique(subset=["player_id"], keep="first")  # Remove duplicates
@@ -453,7 +593,11 @@ def render(user_input: UserInput) -> None:
     with st.expander("Top IR Stashes", expanded=False):
         ir_fa_rankings_df = (
             get_rosters_df(
-                league.id, ranking_set, rankings_df, include_picks=include_picks, include_drafted=include_drafted
+                league.id,
+                ranking_set,
+                rankings_df,
+                include_picks=include_picks,
+                include_drafted=include_drafted,
             )
             .filter(
                 pl.col("owner_name").is_null(),

@@ -248,25 +248,27 @@ dependencies = [
     { name = "statsmodels" },
     { name = "streamlit" },
     { name = "tqdm" },
+    { name = "typing-extensions" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "beautifulsoup4" },
-    { name = "connectorx" },
-    { name = "gitpython" },
-    { name = "pandas" },
-    { name = "plotly" },
-    { name = "polars" },
-    { name = "psycopg2-binary" },
-    { name = "pydantic" },
-    { name = "pygithub" },
-    { name = "requests" },
-    { name = "scipy" },
-    { name = "sqlmodel" },
-    { name = "statsmodels" },
-    { name = "streamlit" },
-    { name = "tqdm" },
+    { name = "beautifulsoup4", specifier = ">=4.12" },
+    { name = "connectorx", specifier = ">=0.3.2" },
+    { name = "gitpython", specifier = ">=3.1.40" },
+    { name = "pandas", specifier = ">=2.2" },
+    { name = "plotly", specifier = ">=5.21" },
+    { name = "polars", specifier = ">=0.20" },
+    { name = "psycopg2-binary", specifier = ">=2.9" },
+    { name = "pydantic", specifier = ">=2.7" },
+    { name = "pygithub", specifier = ">=2.3" },
+    { name = "requests", specifier = ">=2.31" },
+    { name = "scipy", specifier = ">=1.13" },
+    { name = "sqlmodel", specifier = ">=0.0.18" },
+    { name = "statsmodels", specifier = ">=0.14" },
+    { name = "streamlit", specifier = ">=1.35" },
+    { name = "tqdm", specifier = ">=4.66" },
+    { name = "typing-extensions", specifier = ">=4.13.2" },
 ]
 
 [[package]]

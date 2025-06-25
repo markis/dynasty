@@ -1,3 +1,5 @@
+"""Service for retrieving player rankings from KeepTradeCut."""
+
 import json
 import logging
 from collections.abc import Iterable
@@ -19,11 +21,25 @@ PLAYER_URL: Final = "https://keeptradecut.com/dynasty-rankings/players/"
 
 
 class KTCValue(TypedDict):
-    v: int
-    d: str
+    """
+    Type definition for KeepTradeCut historical value data point.
+
+    Represents a single data point in a player's value history,
+    containing the value and date information.
+    """
+
+    v: int  # Value
+    d: str  # Date string
 
 
 class KTCValuesBasic(TypedDict):
+    """
+    Type definition for basic KeepTradeCut player values.
+
+    Contains fundamental ranking and tier information for a player
+    in standard scoring formats.
+    """
+
     value: int
     rank: int
     positionalRank: int
@@ -32,6 +48,13 @@ class KTCValuesBasic(TypedDict):
 
 
 class KTCValues(KTCValuesBasic):
+    """
+    Type definition for comprehensive KeepTradeCut player values.
+
+    Extends the basic values with additional metrics including trends,
+    start/sit values, and various scoring format variations.
+    """
+
     startSitValue: int
     overallTrend: int
     positionalTrend: int
@@ -42,12 +65,20 @@ class KTCValues(KTCValuesBasic):
     cut: int
     diff: int
     isOutThisWeek: bool
-    tep: KTCValuesBasic
-    ttep: KTCValuesBasic
-    tetep: KTCValuesBasic
+    tep: KTCValuesBasic  # Tight End Premium values
+    ttep: KTCValuesBasic  # Two Tight End Premium values
+    tetep: KTCValuesBasic  # Three Tight End Premium values
 
 
 class KTCPlayerData(TypedDict):
+    """
+    Type definition for KeepTradeCut player data response.
+
+    Represents the complete player data structure returned from the
+    KeepTradeCut API, including biographical information, physical
+    attributes, and values for different league formats.
+    """
+
     playerName: str
     playerID: int
     slug: str
@@ -67,8 +98,8 @@ class KTCPlayerData(TypedDict):
     isTrending: bool
     isDevyReturningToSchool: bool
     isDevyYearDecrement: bool
-    oneQBValues: KTCValues
-    superflexValues: KTCValues
+    oneQBValues: KTCValues  # Standard league values
+    superflexValues: KTCValues  # SuperFlex league values
     number: int
     teamLongName: str
     birthday: str
@@ -78,16 +109,40 @@ class KTCPlayerData(TypedDict):
 
 
 class KTCService:
-    """Service for getting player rankings from KeepTradeCut."""
+    """
+    Service for retrieving player rankings from KeepTradeCut.
+
+    Provides methods to fetch current and historical player rankings
+    from the KeepTradeCut dynasty fantasy football ranking service.
+    Supports both standard and SuperFlex league formats.
+
+    Attributes:
+        soup_service: Service for making HTTP requests and parsing HTML
+
+    """
 
     soup_service: Final[SoupService]
 
     def __init__(self, soup_service: SoupService | None = None) -> None:
+        """
+        Initialize the KTCService with an optional SoupService.
+
+        Args:
+            soup_service: Optional SoupService for making requests. If None, a new instance is created.
+
+        """
         if soup_service is None:
             soup_service = SoupService()
         self.soup_service = soup_service
 
     def __enter__(self) -> Self:
+        """
+        Enter the context manager and return the service instance.
+
+        Returns:
+            Self instance for use in context manager
+
+        """
         return self
 
     def __exit__(
@@ -96,10 +151,34 @@ class KTCService:
         exc_val: BaseException | None,
         exc_tb: TracebackType | None,
     ) -> None:
+        """
+        Exit the context manager and close the service.
+
+        Args:
+            exc_type: Exception type if an exception occurred
+            exc_val: Exception value if an exception occurred
+            exc_tb: Exception traceback if an exception occurred
+
+        """
         self.soup_service.close()
 
     @staticmethod
     def convert_player_data(data: KTCPlayerData, league_type: LeagueType, *, now: date) -> PlayerRanking:
+        """
+        Convert KeepTradeCut player data to internal PlayerRanking model.
+
+        Transforms player data from KeepTradeCut's format into the application's
+        PlayerRanking model, selecting appropriate values based on league type.
+
+        Args:
+            data: Player data from KeepTradeCut API
+            league_type: League format (Standard or SuperFlex)
+            now: Date for this ranking snapshot
+
+        Returns:
+            PlayerRanking model instance with converted data
+
+        """
         position = PlayerPosition.from_str(data["position"])
         if league_type == LeagueType.SuperFlex:
             return PlayerRanking(
@@ -120,11 +199,32 @@ class KTCService:
         )
 
     def _get_data_from_page(self, url: str, variable: str) -> str | None:
+        """
+        Extract JavaScript variable data from a KeepTradeCut page.
+
+        Parses the HTML page to find and extract JSON data embedded in JavaScript variables.
+        This is used to retrieve player ranking data from KeepTradeCut's web pages.
+
+        Args:
+            url: The URL to fetch and parse
+            variable: The JavaScript variable name to extract
+
+        Returns:
+            JSON string data from the variable, or None if not found
+
+        Raises:
+            ValueError: If the page body cannot be found
+            TypeError: If script elements cannot be found
+
+        """
         doc = self.soup_service.get(url)
         body = doc.find("body")
         if body is None:
             err = "Could not find body element on page"
             raise ValueError(err)
+        if not isinstance(body, Tag):
+            err = "Body element is not a valid tag"
+            raise TypeError(err)
         script_element = body.find("script")
         if not isinstance(script_element, Tag):
             err = "Could not find script elements on page"
@@ -141,6 +241,19 @@ class KTCService:
         return None
 
     def get_rankings(self, *, back_fill: bool) -> Iterable[PlayerRanking]:
+        """
+        Get player rankings from KeepTradeCut for both league types.
+
+        Retrieves rankings for both Standard and SuperFlex league formats,
+        either for the current date only or full historical data.
+
+        Args:
+            back_fill: If True, retrieves full historical data; if False, current data only
+
+        Yields:
+            PlayerRanking instances for all players and league types
+
+        """
         for league_type in (LeagueType.SuperFlex, LeagueType.Standard):
             if back_fill:
                 yield from self.get_player_full_history(league_type)
@@ -149,10 +262,20 @@ class KTCService:
 
     def get_todays_rankings(self, league_type: LeagueType) -> Iterable[PlayerRanking]:
         """
-        Get player rankings from KeepTradeCut.
+        Get current player rankings from KeepTradeCut.
 
-        In the html, the player rankings are stored in a javascript array. This function
-        parses the html and extracts the player rankings from the javascript array.
+        Retrieves today's player rankings for the specified league type.
+        The rankings are embedded in JavaScript on the KeepTradeCut web page.
+
+        Args:
+            league_type: The league format to get rankings for (Standard or SuperFlex)
+
+        Yields:
+            PlayerRanking instances for all players in the specified league type
+
+        Raises:
+            ValueError: If player data cannot be found on the page
+
         """
         url: str = SUPER_FLEX_URL if league_type == LeagueType.SuperFlex else URL
         data = self._get_data_from_page(url, "playersArray")
@@ -170,9 +293,20 @@ class KTCService:
 
     def get_player_full_history(self, league_type: LeagueType) -> Iterable[PlayerRanking]:
         """
-        Get the full history
+        Get complete historical rankings for all players from KeepTradeCut.
 
-        In the html, the player rankings are stored in a javascript array
+        Retrieves the full value history for each player by scraping individual
+        player pages. This provides historical trend data for analysis.
+
+        Args:
+            league_type: The league format to get rankings for (Standard or SuperFlex)
+
+        Yields:
+            PlayerRanking instances for all historical data points
+
+        Raises:
+            ValueError: If player data cannot be found on pages
+
         """
         url: str = SUPER_FLEX_URL if league_type == LeagueType.SuperFlex else URL
         data = self._get_data_from_page(url, "playersArray")

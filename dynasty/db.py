@@ -1,3 +1,5 @@
+"""Database operations for the Dynasty Fantasy Football application."""
+
 from collections.abc import Iterable
 from datetime import datetime, timedelta
 from os import getenv
@@ -12,6 +14,7 @@ PSQL_URL = getenv("PSQL_URL", "")
 
 
 def create_database(url: str = PSQL_URL) -> Engine:
+    """Create a database engine and initialize the schema."""
     if not url:
         err = "PSQL_URL environment variable must be set"
         raise ValueError(err)
@@ -21,6 +24,7 @@ def create_database(url: str = PSQL_URL) -> Engine:
 
 
 def upsert_players(session: Session, players: Iterable[Player]) -> None:
+    """Upsert players into the database, updating existing records if necessary."""
     for count, player in enumerate(players):
         stmt = (
             insert(Player)
@@ -93,6 +97,7 @@ def upsert_players(session: Session, players: Iterable[Player]) -> None:
 
 
 def upsert_player_rankings(session: Session, player_rankings: Iterable[PlayerRanking]) -> None:
+    """Upsert player rankings into the database, updating existing records if necessary."""
     for count, ranking in enumerate(player_rankings):
         stmt = (
             insert(PlayerRanking)
@@ -117,6 +122,7 @@ def upsert_player_rankings(session: Session, player_rankings: Iterable[PlayerRan
 
 
 def record_picks(session: Session, picks: list[Pick]) -> int:
+    """Record a list of picks in the database, avoiding duplicates."""
     if not picks:
         return 0
 
@@ -135,7 +141,7 @@ def record_picks(session: Session, picks: list[Pick]) -> int:
     stmt = insert(Pick).values(pick_values).on_conflict_do_nothing()
     result = session.exec(stmt)  # type: ignore[call-overload]
     session.commit()
-    return result.rowcount
+    return int(result.rowcount)
 
 
 def get_player_rankings(
@@ -145,6 +151,7 @@ def get_player_rankings(
     end_date: datetime,
     time_frame: timedelta,
 ) -> Iterable[PlayerRanking]:
+    """Retrieve player rankings for a specific league type and ranking set within a given time frame."""
     query = (
         select(PlayerRanking)
         .where(
