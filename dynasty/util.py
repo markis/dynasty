@@ -19,6 +19,7 @@ NAME_REPLACEMENTS: Final[Mapping[str, str]] = {
     "josh-palmer": "joshua-palmer",
     "gabriel-davis": "gabe-davis",
     "jeffery-wilson": "jeff-wilson",
+    "cameron-ward": "cam-ward",
 }
 
 
