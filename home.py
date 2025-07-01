@@ -638,10 +638,10 @@ def render(user_input: UserInput) -> None:
                 for owner in owners
                 if owner != current_username
             },
-            "top_free_agents": fa_rankings_df.select("full_name").limit(15).to_series().to_list(),
+            "top_free_agents": fa_rankings_df.select("full_name").limit(25).to_series().to_list(),
         }
 
-        st.code(dumps(llm_league), language="json")
+        st.code(dumps(llm_league, indent=2), language="json")
 
 
 if __name__ == "__main__":
