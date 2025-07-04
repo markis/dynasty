@@ -20,9 +20,11 @@ def get_text(tag: NavigableString | Tag | int | None) -> str:
     handling None values and different element types gracefully.
 
     Args:
+    ----
         tag: The BeautifulSoup element to extract text from
 
     Returns:
+    -------
         Stripped text content, or empty string if tag is None
 
     """
@@ -40,7 +42,8 @@ class SoupService:
     Provides a convenient interface for making HTTP requests and parsing
     the response content into BeautifulSoup objects for web scraping.
 
-    Attributes:
+    Attributes
+    ----------
         session: HTTP session for making requests with consistent headers
 
     """
@@ -52,6 +55,7 @@ class SoupService:
         Initialize the SoupService with an optional HTTP session.
 
         Args:
+        ----
             session: Optional HTTP session for making requests. If None, a new session is created.
 
         """
@@ -63,7 +67,8 @@ class SoupService:
         """
         Enter the context manager and return the service instance.
 
-        Returns:
+        Returns
+        -------
             Self instance for use in context manager
 
         """
@@ -79,6 +84,7 @@ class SoupService:
         Exit the context manager and close the session.
 
         Args:
+        ----
             exc_type: Exception type if an exception occurred
             exc_val: Exception value if an exception occurred
             exc_tb: Exception traceback if an exception occurred
@@ -98,9 +104,11 @@ class SoupService:
         response content into a BeautifulSoup object for further processing.
 
         Args:
+        ----
             url: The URL to fetch content from
 
         Returns:
+        -------
             BeautifulSoup object containing the parsed HTML content
 
         """

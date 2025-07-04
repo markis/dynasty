@@ -45,7 +45,8 @@ class FantasyNavigatorService:
     dynasty fantasy football ranking service. Supports both Standard and
     SuperFlex league formats.
 
-    Attributes:
+    Attributes
+    ----------
         session: HTTP session for making API requests
 
     """
@@ -57,6 +58,7 @@ class FantasyNavigatorService:
         Initialize the FantasyNavigatorService with an optional HTTP session.
 
         Args:
+        ----
             session: Optional HTTP session for making requests. If None, a new session is created.
 
         """
@@ -68,7 +70,8 @@ class FantasyNavigatorService:
         """
         Enter the context manager and return the service instance.
 
-        Returns:
+        Returns
+        -------
             Self instance for use in context manager
 
         """
@@ -84,6 +87,7 @@ class FantasyNavigatorService:
         Exit the context manager and close the session.
 
         Args:
+        ----
             exc_type: Exception type if an exception occurred
             exc_val: Exception value if an exception occurred
             exc_tb: Exception traceback if an exception occurred
@@ -99,12 +103,15 @@ class FantasyNavigatorService:
         Historical data backfilling is not supported by FantasyNavigator.
 
         Args:
+        ----
             back_fill: If True, raises NotImplementedError as backfilling is not supported
 
         Returns:
+        -------
             Iterable of PlayerRanking instances for all players and league types
 
         Raises:
+        ------
             NotImplementedError: If back_fill is True, as historical data is not available
 
         """
@@ -124,12 +131,15 @@ class FantasyNavigatorService:
         so the league_type parameter is not used for API selection.
 
         Args:
+        ----
             _league_type: League format parameter (not used in API call)
 
         Yields:
+        ------
             PlayerRanking instances for all players in both league types
 
         Raises:
+        ------
             ValueError: If the API request fails or returns an error status
 
         """
@@ -159,10 +169,12 @@ class FantasyNavigatorService:
         type based on roster_type field.
 
         Args:
+        ----
             data: Ranking data from FantasyNavigator API
             now: Date for this ranking snapshot
 
         Returns:
+        -------
             PlayerRanking model instance, or None if not a dynasty ranking
 
         """

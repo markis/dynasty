@@ -116,7 +116,8 @@ class KTCService:
     from the KeepTradeCut dynasty fantasy football ranking service.
     Supports both standard and SuperFlex league formats.
 
-    Attributes:
+    Attributes
+    ----------
         soup_service: Service for making HTTP requests and parsing HTML
 
     """
@@ -128,6 +129,7 @@ class KTCService:
         Initialize the KTCService with an optional SoupService.
 
         Args:
+        ----
             soup_service: Optional SoupService for making requests. If None, a new instance is created.
 
         """
@@ -139,7 +141,8 @@ class KTCService:
         """
         Enter the context manager and return the service instance.
 
-        Returns:
+        Returns
+        -------
             Self instance for use in context manager
 
         """
@@ -155,6 +158,7 @@ class KTCService:
         Exit the context manager and close the service.
 
         Args:
+        ----
             exc_type: Exception type if an exception occurred
             exc_val: Exception value if an exception occurred
             exc_tb: Exception traceback if an exception occurred
@@ -171,11 +175,13 @@ class KTCService:
         PlayerRanking model, selecting appropriate values based on league type.
 
         Args:
+        ----
             data: Player data from KeepTradeCut API
             league_type: League format (Standard or SuperFlex)
             now: Date for this ranking snapshot
 
         Returns:
+        -------
             PlayerRanking model instance with converted data
 
         """
@@ -206,13 +212,16 @@ class KTCService:
         This is used to retrieve player ranking data from KeepTradeCut's web pages.
 
         Args:
+        ----
             url: The URL to fetch and parse
             variable: The JavaScript variable name to extract
 
         Returns:
+        -------
             JSON string data from the variable, or None if not found
 
         Raises:
+        ------
             ValueError: If the page body cannot be found
             TypeError: If script elements cannot be found
 
@@ -248,9 +257,11 @@ class KTCService:
         either for the current date only or full historical data.
 
         Args:
+        ----
             back_fill: If True, retrieves full historical data; if False, current data only
 
         Yields:
+        ------
             PlayerRanking instances for all players and league types
 
         """
@@ -268,12 +279,15 @@ class KTCService:
         The rankings are embedded in JavaScript on the KeepTradeCut web page.
 
         Args:
+        ----
             league_type: The league format to get rankings for (Standard or SuperFlex)
 
         Yields:
+        ------
             PlayerRanking instances for all players in the specified league type
 
         Raises:
+        ------
             ValueError: If player data cannot be found on the page
 
         """
@@ -299,12 +313,15 @@ class KTCService:
         player pages. This provides historical trend data for analysis.
 
         Args:
+        ----
             league_type: The league format to get rankings for (Standard or SuperFlex)
 
         Yields:
+        ------
             PlayerRanking instances for all historical data points
 
         Raises:
+        ------
             ValueError: If player data cannot be found on pages
 
         """

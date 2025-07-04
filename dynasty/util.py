@@ -31,9 +31,11 @@ def normalize_name(name: str) -> str:
     Applies specific name replacements for known edge cases.
 
     Args:
+    ----
         name: The player name to normalize
 
     Returns:
+    -------
         The normalized player name with dashes instead of spaces
 
     """
@@ -52,9 +54,11 @@ def generate_id(name: str) -> UUID:
     always generates the same UUID across different runs.
 
     Args:
+    ----
         name: The player name to generate an ID for
 
     Returns:
+    -------
         A UUID5 generated from the normalized player name
 
     """
@@ -74,9 +78,11 @@ def get_date(date_string: str | None) -> date | None:
     Parse a date string in YYYY-MM-DD format.
 
     Args:
+    ----
         date_string: Date string in YYYY-MM-DD format, or None
 
     Returns:
+    -------
         Parsed date object, or None if input was None
 
     """
@@ -92,9 +98,11 @@ def get_height(height: str) -> int | None:
     Handles both feet'inches" format (e.g., "6'2"") and inches-only format.
 
     Args:
+    ----
         height: Height string in various formats
 
     Returns:
+    -------
         Height in total inches, or None if input is empty/invalid
 
     """
@@ -117,9 +125,11 @@ def get_placement(placement: int) -> str:
     ordinal suffixes (st, nd, rd, th).
 
     Args:
+    ----
         placement: The numeric placement/rank
 
     Returns:
+    -------
         Ordinal string representation (e.g., "1st", "2nd", "3rd", "11th")
 
     """
@@ -141,9 +151,11 @@ def convert_date(value: str) -> date:
     Convert a date string in YYYY-MM-DD format to a date object.
 
     Args:
+    ----
         value: Date string in YYYY-MM-DD format
 
     Returns:
+    -------
         Parsed date object with UTC timezone
 
     """
@@ -159,6 +171,7 @@ class SideEffect(Iterable[T]):
     progress tracking and debugging.
 
     Args:
+    ----
         iterable: The iterable to wrap
         side_effect: Function to call on each item
 
@@ -171,6 +184,7 @@ class SideEffect(Iterable[T]):
         Initialize the SideEffect wrapper.
 
         Args:
+        ----
             iterable: The iterable to wrap
             side_effect: Function to call on each item before yielding
 
@@ -183,7 +197,8 @@ class SideEffect(Iterable[T]):
         """
         Iterate through items, applying side effect to each.
 
-        Yields:
+        Yields
+        ------
             Each item from the wrapped iterable after applying side effect
 
         """

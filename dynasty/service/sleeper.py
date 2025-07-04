@@ -339,7 +339,8 @@ class SleeperService:
     and draft information from the Sleeper platform. Handles data conversion
     from Sleeper's API format to the application's internal data models.
 
-    Attributes:
+    Attributes
+    ----------
         session: HTTP session for making API requests
         BASE_URL: Base URL for the Sleeper API
 
@@ -354,6 +355,7 @@ class SleeperService:
         Initialize the SleeperService with an optional HTTP session.
 
         Args:
+        ----
             session: Optional HTTP session for making requests. If None, a new session is created.
 
         """
@@ -365,7 +367,8 @@ class SleeperService:
         """
         Enter the context manager and return the service instance.
 
-        Returns:
+        Returns
+        -------
             Self instance for use in context manager
 
         """
@@ -381,6 +384,7 @@ class SleeperService:
         Exit the context manager and close the session.
 
         Args:
+        ----
             exc_type: Exception type if an exception occurred
             exc_val: Exception value if an exception occurred
             exc_tb: Exception traceback if an exception occurred
@@ -401,10 +405,12 @@ class SleeperService:
         Player model, handling data validation and normalization.
 
         Args:
+        ----
             sleeper_id: The Sleeper platform ID for the player
             player_dict: Player data from Sleeper API
 
         Returns:
+        -------
             Player model instance, or None if data is invalid or should be ignored
 
         """
@@ -466,10 +472,12 @@ class SleeperService:
         League model, determining league type and scoring settings.
 
         Args:
+        ----
             league_dict: League data from Sleeper API
             season: The season year for this league
 
         Returns:
+        -------
             League model instance, or None if data is invalid
 
         """
@@ -510,10 +518,12 @@ class SleeperService:
         and provides human-readable labels for each scoring rule.
 
         Args:
+        ----
             scoring_settings: Raw scoring settings from Sleeper API
             roster_positions: List of roster positions to determine applicable categories
 
         Returns:
+        -------
             Dictionary organized by scoring category with labeled scoring rules
 
         """
@@ -695,12 +705,14 @@ class SleeperService:
         Roster model, including traded picks and drafted players.
 
         Args:
+        ----
             roster_dict: Roster data from Sleeper API
             user_dict: User data for the roster owner
             traded_picks: List of traded draft picks
             drafted: List of drafted players
 
         Returns:
+        -------
             Roster model instance with converted data
 
         """
@@ -757,7 +769,8 @@ class SleeperService:
         Retrieves and caches the current season metadata including
         week, season type, and other timing information.
 
-        Returns:
+        Returns
+        -------
             Season metadata dictionary from Sleeper API
 
         """
@@ -773,7 +786,8 @@ class SleeperService:
         """
         Get the current NFL season year from Sleeper API.
 
-        Returns:
+        Returns
+        -------
             The current NFL season as an integer year
 
         """
@@ -787,7 +801,8 @@ class SleeperService:
         Retrieves the complete player database from Sleeper and converts
         each player to the internal Player model format.
 
-        Returns:
+        Returns
+        -------
             Iterable of Player model instances
 
         """
@@ -805,9 +820,11 @@ class SleeperService:
         Get the Sleeper user ID for a given username.
 
         Args:
+        ----
             username: The Sleeper username to look up
 
         Returns:
+        -------
             The Sleeper user ID, or None if user not found
 
         """
@@ -826,10 +843,12 @@ class SleeperService:
         and converts them to the internal League model format.
 
         Args:
+        ----
             user_id: The Sleeper user ID
             season: The season year (defaults to current season)
 
         Returns:
+        -------
             Iterable of League model instances
 
         """
@@ -854,11 +873,13 @@ class SleeperService:
         for a given season, filtered by draft status.
 
         Args:
+        ----
             user_id: The Sleeper user ID
             season: The season year (defaults to current season)
             draft_status: Set of draft statuses to include (defaults to "complete")
 
         Returns:
+        -------
             Iterable of draft dictionaries matching the status filter
 
         """
@@ -883,11 +904,13 @@ class SleeperService:
         including traded picks and drafted players.
 
         Args:
+        ----
             league_id: The Sleeper league ID
             include_picks: Whether to include traded draft picks
             include_drafted: Whether to include drafted players
 
         Returns:
+        -------
             Sequence of Roster model instances for all teams in the league
 
         """
@@ -920,12 +943,15 @@ class SleeperService:
             Find user data for a roster owner.
 
             Args:
+            ----
                 roster: The roster dictionary
 
             Returns:
+            -------
                 User dictionary for the roster owner
 
             Raises:
+            ------
                 ValueError: If the user is not found
 
             """

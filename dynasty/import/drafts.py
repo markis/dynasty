@@ -65,9 +65,11 @@ def get_drafts(user_id: str) -> list[str]:
     associated with a specific user.
 
     Args:
+    ----
         user_id: The Sleeper user ID to fetch drafts for
 
     Returns:
+    -------
         List of draft data from the API, or empty list if request fails
 
     """
@@ -90,10 +92,12 @@ def process_draft_picks(league_id: str, draft_id: str) -> int:
     and stores them in the database.
 
     Args:
+    ----
         league_id: The Sleeper league ID
         draft_id: The Sleeper draft ID
 
     Returns:
+    -------
         Number of picks successfully created in the database
 
     """
@@ -122,9 +126,11 @@ def get_picks(draft_id: str) -> list[SleeperDraftPickDict]:
     Makes a direct HTTP request to get all picks made in a particular draft.
 
     Args:
+    ----
         draft_id: The Sleeper draft ID to fetch picks for
 
     Returns:
+    -------
         List of draft pick dictionaries from the API, or empty list if request fails
 
     """

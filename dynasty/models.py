@@ -63,12 +63,15 @@ class ScoringType(StrEnum):
         Convert a numeric reception scoring value to ScoringType enum.
 
         Args:
+        ----
             value: The reception scoring value (1.0 for PPR, 0.5 for Half PPR, 0.0 for Standard)
 
         Returns:
+        -------
             The corresponding ScoringType enum value
 
         Raises:
+        ------
             ValueError: If the value doesn't match any known scoring type
 
         """
@@ -99,12 +102,15 @@ class TEPScoringType(StrEnum):
         Convert a numeric TEP scoring value to TEPScoringType enum.
 
         Args:
+        ----
             value: The TEP bonus scoring value (1.0 for Full TEP, 0.5 for Half TEP, 0.0 for None)
 
         Returns:
+        -------
             The corresponding TEPScoringType enum value, or None if no TEP scoring
 
         Raises:
+        ------
             ValueError: If the value doesn't match any known TEP scoring type
 
         """
@@ -136,12 +142,15 @@ class StatusType(StrEnum):
         Convert a string value to StatusType enum.
 
         Args:
+        ----
             value: The status string to convert
 
         Returns:
+        -------
             The corresponding StatusType enum value
 
         Raises:
+        ------
             ValueError: If the value doesn't match any known status type
 
         """
@@ -195,9 +204,11 @@ class PlayerPosition(StrEnum):
         converting to uppercase, and mapping alternate abbreviations.
 
         Args:
+        ----
             value: The position string to convert
 
         Returns:
+        -------
             The corresponding PlayerPosition enum value, or None if not found
 
         """
@@ -259,9 +270,11 @@ class InjuryStatus(StrEnum):
         converting to uppercase, and mapping alternate abbreviations.
 
         Args:
+        ----
             value: The injury status string to convert
 
         Returns:
+        -------
             The corresponding InjuryStatus enum value, or None if not found
 
         """
@@ -353,9 +366,11 @@ class Team(StrEnum):
         and mapping alternate abbreviations to standard team codes.
 
         Args:
+        ----
             value: The team string to convert
 
         Returns:
+        -------
             The corresponding Team enum value
 
         """

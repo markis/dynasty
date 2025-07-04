@@ -78,7 +78,8 @@ class FantasyCalcService:
     dynasty fantasy football ranking service. Supports both Standard and
     SuperFlex league formats.
 
-    Attributes:
+    Attributes
+    ----------
         session: HTTP session for making API requests
         players: Dictionary mapping Sleeper IDs to Player objects for cross-referencing
 
@@ -95,6 +96,7 @@ class FantasyCalcService:
         for cross-referencing player data between services.
 
         Args:
+        ----
             session: Optional HTTP session for making requests. If None, a new session is created.
 
         """
@@ -111,7 +113,8 @@ class FantasyCalcService:
         """
         Enter the context manager and return the service instance.
 
-        Returns:
+        Returns
+        -------
             Self instance for use in context manager
 
         """
@@ -127,6 +130,7 @@ class FantasyCalcService:
         Exit the context manager and close the session.
 
         Args:
+        ----
             exc_type: Exception type if an exception occurred
             exc_val: Exception value if an exception occurred
             exc_tb: Exception traceback if an exception occurred
@@ -142,12 +146,15 @@ class FantasyCalcService:
         Historical data backfilling is not supported by FantasyCalc.
 
         Args:
+        ----
             back_fill: If True, raises NotImplementedError as backfilling is not supported
 
         Returns:
+        -------
             Iterable of PlayerRanking instances for all players and league types
 
         Raises:
+        ------
             NotImplementedError: If back_fill is True, as historical data is not available
 
         """
@@ -166,12 +173,15 @@ class FantasyCalcService:
         from the FantasyCalc API endpoint.
 
         Args:
+        ----
             league_type: The league format to get rankings for (Standard or SuperFlex)
 
         Yields:
+        ------
             PlayerRanking instances for all players in the specified league type
 
         Raises:
+        ------
             ValueError: If the API request fails or returns an error status
 
         """
@@ -197,11 +207,13 @@ class FantasyCalcService:
         PlayerRanking model, using Sleeper ID cross-referencing when available.
 
         Args:
+        ----
             data: Ranking data from FantasyCalc API
             league_type: League format (Standard or SuperFlex)
             now: Date for this ranking snapshot
 
         Returns:
+        -------
             PlayerRanking model instance with converted data
 
         """

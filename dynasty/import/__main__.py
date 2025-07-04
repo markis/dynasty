@@ -33,7 +33,8 @@ class PlayerRankingRetriever:
     ranking services and tracking which players are being processed for
     efficient player data retrieval.
 
-    Attributes:
+    Attributes
+    ----------
         player_ids: Set of player UUIDs that have been processed
 
     """
@@ -52,6 +53,7 @@ class PlayerRankingRetriever:
         processing rankings from various sources.
 
         Args:
+        ----
             ranking: The PlayerRanking instance being processed
 
         """
@@ -65,10 +67,12 @@ class PlayerRankingRetriever:
         and automatic player ID collection for later player data retrieval.
 
         Args:
+        ----
             ranking_sets: Container of RankingSet enums specifying which services to use
             back_fill: Whether to retrieve historical data or current data only
 
         Yields:
+        ------
             PlayerRanking instances from all specified ranking services
 
         """
@@ -107,7 +111,8 @@ class PlayerRankingRetriever:
         Fetches complete player information from Sleeper for all players
         that were encountered during ranking retrieval.
 
-        Yields:
+        Yields
+        ------
             Player instances for all tracked player IDs
 
         """
@@ -125,6 +130,7 @@ def import_players(ranking_sets: Container[RankingSet], *, back_fill: bool = Fal
     in the database with proper upsert handling.
 
     Args:
+    ----
         ranking_sets: Container of RankingSet enums specifying which services to import from
         back_fill: Whether to retrieve historical data or current data only
 

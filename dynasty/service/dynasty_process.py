@@ -44,9 +44,11 @@ def is_dynasty_process_row(row: dict[str, str]) -> TypeGuard[DynastyProcessRow]:
     to ensure it matches the expected DynastyProcessRow structure.
 
     Args:
+    ----
         row: Dictionary to validate
 
     Returns:
+    -------
         True if the row contains all required fields, False otherwise
 
     """
@@ -61,7 +63,8 @@ class DynastyProcess:
     from the DynastyProcess GitHub repository. Supports both live API
     access and historical data retrieval via Git.
 
-    Attributes:
+    Attributes
+    ----------
         session: HTTP session for making API requests
 
     """
@@ -71,6 +74,7 @@ class DynastyProcess:
         Initialize the DynastyProcess service with an optional HTTP session.
 
         Args:
+        ----
             session: Optional HTTP session for making requests. If None, a new session is created.
 
         """
@@ -82,7 +86,8 @@ class DynastyProcess:
         """
         Enter the context manager and return the service instance.
 
-        Returns:
+        Returns
+        -------
             Self instance for use in context manager
 
         """
@@ -98,6 +103,7 @@ class DynastyProcess:
         Exit the context manager and close the session.
 
         Args:
+        ----
             exc_type: Exception type if an exception occurred
             exc_val: Exception value if an exception occurred
             exc_tb: Exception traceback if an exception occurred
@@ -116,10 +122,12 @@ class DynastyProcess:
         Fetches the most recent rankings CSV file directly from the
         DynastyProcess GitHub repository via HTTP.
 
-        Returns:
+        Returns
+        -------
             Iterable of DynastyProcessRow dictionaries, or None if request fails
 
-        Raises:
+        Raises
+        ------
             requests.HTTPError: If the HTTP request fails
 
         """
@@ -136,7 +144,8 @@ class DynastyProcess:
         Retrieves rankings data from all historical commits in a local clone
         of the DynastyProcess repository. Useful for building complete historical datasets.
 
-        Returns:
+        Returns
+        -------
             Iterable of DynastyProcessRow dictionaries from all commits, or None if repo unavailable
 
         """
@@ -161,9 +170,11 @@ class DynastyProcess:
         either from the latest data or complete historical dataset.
 
         Args:
+        ----
             back_fill: If True, retrieves historical data from Git; if False, latest data only
 
         Returns:
+        -------
             Iterable of PlayerRanking instances for all players and league types
 
         """
