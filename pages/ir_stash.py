@@ -8,10 +8,12 @@ stash candidates for future seasons.
 import polars as pl
 import streamlit as st
 
+from dynasty.models import StatusType
 from pages.shared_utils import (
     HELP_TEXT_TREND,
     IR_POSITIONS,
     POSITIONS,
+    UserInput,
     get_processed_data,
     get_rosters_df,
     get_user_input,
@@ -21,24 +23,9 @@ from pages.shared_utils import (
 st.set_page_config("IR Stash", ":hospital:", layout="wide")
 
 
-def render_ir_stash(user_input) -> None:
-    """
-    Render IR stash analysis.
-
-    Args:
-    ----
-        user_input: UserInput object containing all user preferences
-
-    """
+def _load_ir_stash_data(user_input: UserInput) -> pl.DataFrame:
+    """Load and process IR stash candidates data."""
     owner_id, current_username, league, ranking_set, starters_only, include_picks, time_frame = user_input
-
-    st.header(f"IR Stash Candidates - {league.name}")
-
-    st.info("""
-    **IR Stash Strategy**: These are injured players who are currently unowned but may provide
-    significant value when they return from injury. Perfect for stashing on IR spots or picking
-    up before others notice their potential.
-    """)
 
     # Progress bar for data loading
     prog = st.progress(0)
@@ -48,7 +35,6 @@ def render_ir_stash(user_input) -> None:
     _ = prog.progress(80)
 
     # Get IR stash candidates
-    from dynasty.models import StatusType
 
     include_drafted = league.status == StatusType.Drafting
 
@@ -73,7 +59,11 @@ def render_ir_stash(user_input) -> None:
     _ = prog.progress(100)
     _ = prog.empty()
 
-    # Show injury status legend
+    return ir_fa_rankings_df
+
+
+def _render_injury_legend() -> None:
+    """Render the injury status legend."""
     st.subheader("Injury Status Legend")
     col1, col2, col3 = st.columns(3)
     with col1:
@@ -86,7 +76,9 @@ def render_ir_stash(user_input) -> None:
         st.markdown("**NA** - Not Available")
         st.markdown("**S** - Suspended")
 
-    # Position and injury status filters
+
+def _render_ir_filters(ir_fa_rankings_df: pl.DataFrame) -> tuple[list[str], list[str]]:
+    """Render filters and return selected values."""
     st.subheader("Filters")
     col1, col2 = st.columns(2)
 
@@ -108,14 +100,23 @@ def render_ir_stash(user_input) -> None:
             help="Filter by injury status",
         )
 
-    # Apply filters
+    return selected_positions, selected_injury_statuses
+
+
+def _apply_ir_filters(
+    ir_fa_rankings_df: pl.DataFrame, selected_positions: list[str], selected_injury_statuses: list[str]
+) -> pl.DataFrame:
+    """Apply filters to the IR stash data."""
     filtered_ir_df = ir_fa_rankings_df
     if selected_positions:
         filtered_ir_df = filtered_ir_df.filter(pl.col("position").is_in(selected_positions))
     if selected_injury_statuses:
         filtered_ir_df = filtered_ir_df.filter(pl.col("injury_status").is_in(selected_injury_statuses))
+    return filtered_ir_df
 
-    # Show statistics
+
+def _render_ir_statistics(ir_fa_rankings_df: pl.DataFrame, filtered_ir_df: pl.DataFrame) -> None:
+    """Render IR stash statistics."""
     col1, col2, col3, col4 = st.columns(4)
     with col1:
         st.metric("Total IR Candidates", len(ir_fa_rankings_df))
@@ -132,7 +133,9 @@ def render_ir_stash(user_input) -> None:
             if max_value is not None:
                 st.metric("Highest Value", f"{max_value}")
 
-    # IR stash candidates table
+
+def _render_ir_table(filtered_ir_df: pl.DataFrame) -> None:
+    """Render the main IR stash candidates table."""
     st.subheader("IR Stash Candidates")
 
     if len(filtered_ir_df) > 0:
@@ -157,7 +160,9 @@ def render_ir_stash(user_input) -> None:
     else:
         st.info("No IR stash candidates match your current filters.")
 
-    # High-value stashes by position
+
+def _render_ir_position_breakdown(filtered_ir_df: pl.DataFrame) -> None:
+    """Render top IR stashes by position breakdown."""
     if len(filtered_ir_df) > 0:
         st.subheader("Top IR Stashes by Position")
 
@@ -197,7 +202,9 @@ def render_ir_stash(user_input) -> None:
                         use_container_width=True,
                     )
 
-    # Strategy tips
+
+def _render_ir_strategy_tips() -> None:
+    """Render IR stash strategy tips."""
     with st.expander("IR Stash Strategy Tips", expanded=False):
         st.markdown("""
         ### Successful IR Stashing Strategy:
@@ -217,8 +224,52 @@ def render_ir_stash(user_input) -> None:
         """)
 
 
+def render_ir_stash(user_input: UserInput) -> None:
+    """
+    Render IR stash analysis.
+
+    Args:
+    ----
+        user_input: UserInput object containing all user preferences
+
+    """
+    owner_id, current_username, league, ranking_set, starters_only, include_picks, time_frame = user_input
+
+    st.header(f"IR Stash Candidates - {league.name}")
+
+    st.info("""
+    **IR Stash Strategy**: These are injured players who are currently unowned but may provide
+    significant value when they return from injury. Perfect for stashing on IR spots or picking
+    up before others notice their potential.
+    """)
+
+    # Load and process data
+    ir_fa_rankings_df = _load_ir_stash_data(user_input)
+
+    # Show injury status legend
+    _render_injury_legend()
+
+    # Position and injury status filters
+    selected_positions, selected_injury_statuses = _render_ir_filters(ir_fa_rankings_df)
+
+    # Apply filters
+    filtered_ir_df = _apply_ir_filters(ir_fa_rankings_df, selected_positions, selected_injury_statuses)
+
+    # Show statistics
+    _render_ir_statistics(ir_fa_rankings_df, filtered_ir_df)
+
+    # IR stash candidates table
+    _render_ir_table(filtered_ir_df)
+
+    # High-value stashes by position
+    _render_ir_position_breakdown(filtered_ir_df)
+
+    # Strategy tips
+    _render_ir_strategy_tips()
+
+
 def main() -> None:
-    """Main function for the IR stash page."""
+    """Run the IR stash page."""
     render_home_nav()
 
     user_input = get_user_input()

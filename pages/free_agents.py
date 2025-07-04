@@ -11,6 +11,7 @@ import streamlit as st
 from pages.shared_utils import (
     HELP_TEXT_TREND,
     POSITIONS,
+    UserInput,
     get_processed_data,
     get_user_input,
     render_home_nav,
@@ -19,19 +20,8 @@ from pages.shared_utils import (
 st.set_page_config("Free Agents", ":runner:", layout="wide")
 
 
-def render_free_agents(user_input) -> None:
-    """
-    Render free agents analysis.
-
-    Args:
-    ----
-        user_input: UserInput object containing all user preferences
-
-    """
-    owner_id, current_username, league, ranking_set, starters_only, include_picks, time_frame = user_input
-
-    st.header(f"Free Agents - {league.name}")
-
+def _load_free_agents_data(user_input: UserInput) -> tuple[pl.DataFrame, pl.DataFrame]:
+    """Load and process free agents data."""
     # Progress bar for data loading
     prog = st.progress(0)
 
@@ -58,22 +48,30 @@ def render_free_agents(user_input) -> None:
     _ = prog.progress(100)
     _ = prog.empty()
 
-    # Position filter
+    return fa_rankings_df, roster_df
+
+
+def _render_position_filter(fa_rankings_df: pl.DataFrame) -> list[str]:
+    """Render position filter and return selected positions."""
     st.subheader("Filter by Position")
     available_positions = sorted(fa_rankings_df.get_column("position").unique().to_list())
-    selected_positions = st.multiselect(
+    return st.multiselect(
         "Select positions to show",
         options=available_positions,
         default=available_positions,
         help="Filter free agents by position",
     )
 
-    if selected_positions:
-        filtered_fa_df = fa_rankings_df.filter(pl.col("position").is_in(selected_positions))
-    else:
-        filtered_fa_df = fa_rankings_df
 
-    # Value filter
+def _apply_position_filter(fa_rankings_df: pl.DataFrame, selected_positions: list[str]) -> pl.DataFrame:
+    """Apply position filter to free agents data."""
+    if selected_positions:
+        return fa_rankings_df.filter(pl.col("position").is_in(selected_positions))
+    return fa_rankings_df
+
+
+def _render_value_filter(filtered_fa_df: pl.DataFrame) -> pl.DataFrame:
+    """Render value filter and return filtered data."""
     if len(filtered_fa_df) > 0:
         value_col = filtered_fa_df.get_column("value")
         min_val = value_col.min()
@@ -97,9 +95,13 @@ def render_free_agents(user_input) -> None:
                 help="Filter players by minimum value",
             )
 
-            filtered_fa_df = filtered_fa_df.filter(pl.col("value") >= value_range)
+            return filtered_fa_df.filter(pl.col("value") >= value_range)
 
-    # Show statistics
+    return filtered_fa_df
+
+
+def _render_free_agents_stats(fa_rankings_df: pl.DataFrame, filtered_fa_df: pl.DataFrame) -> None:
+    """Render free agents statistics."""
     col1, col2, col3 = st.columns(3)
     with col1:
         st.metric("Total Free Agents", len(fa_rankings_df))
@@ -112,7 +114,9 @@ def render_free_agents(user_input) -> None:
                 avg_value = int(avg_value_raw)
                 st.metric("Average Value", avg_value)
 
-    # Free agents table
+
+def _render_free_agents_table(filtered_fa_df: pl.DataFrame) -> None:
+    """Render the main free agents table."""
     st.subheader("Available Players")
 
     if len(filtered_fa_df) > 0:
@@ -137,7 +141,9 @@ def render_free_agents(user_input) -> None:
     else:
         st.info("No free agents match your current filters.")
 
-    # Top players by position
+
+def _render_position_breakdown(filtered_fa_df: pl.DataFrame) -> None:
+    """Render top players by position breakdown."""
     if len(filtered_fa_df) > 0:
         st.subheader("Top Free Agents by Position")
 
@@ -175,8 +181,41 @@ def render_free_agents(user_input) -> None:
                 )
 
 
+def render_free_agents(user_input: UserInput) -> None:
+    """
+    Render free agents analysis.
+
+    Args:
+    ----
+        user_input: UserInput object containing all user preferences
+
+    """
+    owner_id, current_username, league, ranking_set, starters_only, include_picks, time_frame = user_input
+
+    st.header(f"Free Agents - {league.name}")
+
+    # Load and process data
+    fa_rankings_df, roster_df = _load_free_agents_data(user_input)
+
+    # Position filter
+    selected_positions = _render_position_filter(fa_rankings_df)
+    filtered_fa_df = _apply_position_filter(fa_rankings_df, selected_positions)
+
+    # Value filter
+    filtered_fa_df = _render_value_filter(filtered_fa_df)
+
+    # Show statistics
+    _render_free_agents_stats(fa_rankings_df, filtered_fa_df)
+
+    # Free agents table
+    _render_free_agents_table(filtered_fa_df)
+
+    # Top players by position
+    _render_position_breakdown(filtered_fa_df)
+
+
 def main() -> None:
-    """Main function for the free agents page."""
+    """Run the free agents page."""
     render_home_nav()
 
     user_input = get_user_input()

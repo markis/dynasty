@@ -161,7 +161,7 @@ def render_team_analysis(user_input: UserInput) -> None:
 
 
 def main() -> None:
-    """Main function for the team analysis page."""
+    """Run the team analysis page."""
     render_home_nav()
 
     user_input = get_user_input()

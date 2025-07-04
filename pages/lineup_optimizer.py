@@ -5,13 +5,15 @@ This page provides lineup optimization recommendations including optimal startin
 start/sit advice, and strategic roster management insights.
 """
 
-from typing import Dict, List, Tuple
+from collections.abc import Sequence
+from typing import Optional
 
 import plotly.express as px
 import plotly.graph_objects as go
 import polars as pl
 import streamlit as st
 
+from dynasty.models import PlayerPosition
 from pages.shared_utils import (
     HELP_TEXT_TREND,
     POSITIONS,
@@ -23,28 +25,36 @@ from pages.shared_utils import (
 
 st.set_page_config("Lineup Optimizer", ":dart:", layout="wide")
 
+# Constants
+VALUE_IMPROVEMENT_THRESHOLD = 100
+NEGATIVE_VALUE_THRESHOLD = -50
+POSITION_DEPTH_THRESHOLD = 5
 
-def parse_roster_positions(roster_positions) -> dict[str, int]:
+
+def parse_roster_positions(roster_positions: Sequence[PlayerPosition]) -> dict[str, int]:
     """Parse roster positions into position requirements."""
     position_counts = {}
 
     for pos in roster_positions:
-        if pos in ["QB", "RB", "WR", "TE", "K", "DEF"]:
-            position_counts[pos] = position_counts.get(pos, 0) + 1
-        elif pos in ["FLEX", "SUPER_FLEX", "WRRB_FLEX", "REC_FLEX"]:
+        pos_str = str(pos)
+        if pos_str in ["QB", "RB", "WR", "TE", "K", "DEF"]:
+            position_counts[pos_str] = position_counts.get(pos_str, 0) + 1
+        elif pos_str in ["FLEX", "SUPER_FLEX", "WRRB_FLEX", "REC_FLEX"]:
             # These are flex positions that can be filled by multiple position types
-            position_counts[pos] = position_counts.get(pos, 0) + 1
-        elif pos in ["BN", "BENCH"]:
+            position_counts[pos_str] = position_counts.get(pos_str, 0) + 1
+        elif pos_str in ["BN", "BENCH"]:
             # Bench spots
             position_counts["BN"] = position_counts.get("BN", 0) + 1
-        elif pos in ["IR"]:
+        elif pos_str in ["IR"]:
             # IR spots
             position_counts["IR"] = position_counts.get("IR", 0) + 1
 
     return position_counts
 
 
-def get_optimal_lineup(user_roster: pl.DataFrame, roster_positions) -> tuple[pl.DataFrame, pl.DataFrame]:
+def get_optimal_lineup(
+    user_roster: pl.DataFrame, roster_positions: Sequence[PlayerPosition]
+) -> tuple[pl.DataFrame, pl.DataFrame]:
     """
     Calculate the optimal starting lineup based on player values.
 
@@ -118,8 +128,8 @@ def get_optimal_lineup(user_roster: pl.DataFrame, roster_positions) -> tuple[pl.
 
 
 def analyze_start_sit_decisions(
-    optimal_lineup: pl.DataFrame, current_starters: pl.DataFrame, bench_players: pl.DataFrame
-):
+    optimal_lineup: pl.DataFrame, current_starters: pl.DataFrame, _bench_players: pl.DataFrame
+) -> list[dict]:
     """Analyze start/sit decisions and provide recommendations."""
     recommendations = []
 
@@ -198,19 +208,11 @@ def get_position_depth_analysis(user_roster: pl.DataFrame) -> dict:
     return depth_analysis
 
 
-def render_lineup_optimizer(user_input: UserInput) -> None:
-    """
-    Render the lineup optimizer interface.
-
-    Args:
-    ----
-        user_input: UserInput object containing all user preferences
-
-    """
+def _load_optimizer_data(
+    user_input: UserInput,
+) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame, pl.DataFrame, pl.DataFrame]:
+    """Load and prepare data for lineup optimizer."""
     owner_id, current_username, league, ranking_set, starters_only, include_picks, time_frame = user_input
-
-    st.header("🎯 Lineup Optimizer")
-    st.markdown("Optimize your starting lineup and get strategic roster recommendations")
 
     # Get processed data
     with st.spinner("Loading your roster data..."):
@@ -221,16 +223,19 @@ def render_lineup_optimizer(user_input: UserInput) -> None:
 
     if len(user_roster) == 0:
         st.error(f"No roster found for user '{current_username}'. Please check your username.")
-        return
+        return players_df, rankings_df, pl.DataFrame(), pl.DataFrame(), pl.DataFrame()
 
-    # Get current starters
+    # Get current starters and bench
     current_starters = user_roster.filter(pl.col("is_starter"))
-    current_bench = user_roster.filter(not pl.col("is_starter"))
+    current_bench = user_roster.filter(~pl.col("is_starter"))
 
-    # Calculate optimal lineup
-    optimal_starters, optimal_bench = get_optimal_lineup(user_roster, league.roster_positions)
+    return players_df, rankings_df, user_roster, current_starters, current_bench
 
-    # Show roster overview
+
+def _render_roster_overview(
+    user_roster: pl.DataFrame, current_starters: pl.DataFrame, optimal_starters: pl.DataFrame
+) -> None:
+    """Render the roster overview metrics."""
     st.subheader("Roster Overview")
 
     col1, col2, col3, col4 = st.columns(4)
@@ -251,144 +256,155 @@ def render_lineup_optimizer(user_input: UserInput) -> None:
         value_improvement = optimal_value - starter_value
         st.metric("Potential Improvement", f"{value_improvement:+,}", delta=f"{value_improvement:+,}")
 
-    # Lineup comparison
-    st.subheader("Lineup Comparison")
 
-    tab1, tab2, tab3 = st.tabs(["Current vs Optimal", "Start/Sit Recommendations", "Depth Analysis"])
+def _render_current_vs_optimal_tab(current_starters: pl.DataFrame, optimal_starters: pl.DataFrame) -> None:
+    """Render the current vs optimal lineup comparison tab."""
+    col1, col2 = st.columns(2)
 
-    with tab1:
-        col1, col2 = st.columns(2)
-
-        with col1:
-            st.markdown("#### Current Starting Lineup")
-            if len(current_starters) > 0:
-                st.dataframe(
-                    current_starters.select(["full_name", "position", "value", "trend"]).sort("value", descending=True),
-                    column_config={
-                        "full_name": st.column_config.Column("Player", width="medium"),
-                        "position": st.column_config.Column("Position", width="small"),
-                        "value": st.column_config.NumberColumn("Value", width="small"),
-                        "trend": st.column_config.NumberColumn(
-                            "Trend", format="%.2f", width="small", help=HELP_TEXT_TREND
-                        ),
-                    },
-                    hide_index=True,
-                    use_container_width=True,
-                )
-            else:
-                st.info("No current starters found")
-
-        with col2:
-            st.markdown("#### Optimal Starting Lineup")
-            if len(optimal_starters) > 0:
-                st.dataframe(
-                    optimal_starters.select(["full_name", "position", "value", "trend"]).sort("value", descending=True),
-                    column_config={
-                        "full_name": st.column_config.Column("Player", width="medium"),
-                        "position": st.column_config.Column("Position", width="small"),
-                        "value": st.column_config.NumberColumn("Value", width="small"),
-                        "trend": st.column_config.NumberColumn(
-                            "Trend", format="%.2f", width="small", help=HELP_TEXT_TREND
-                        ),
-                    },
-                    hide_index=True,
-                    use_container_width=True,
-                )
-            else:
-                st.info("Unable to generate optimal lineup")
-
-    with tab2:
-        st.markdown("#### Start/Sit Recommendations")
-
-        recommendations = analyze_start_sit_decisions(optimal_starters, current_starters, current_bench)
-
-        if recommendations:
-            for rec in recommendations:
-                if rec["type"] == "START":
-                    st.success(f"▲ **START {rec['player']}** ({rec['position']}) - {rec['reason']}")
-                else:
-                    st.warning(f"▼ **SIT {rec['player']}** ({rec['position']}) - {rec['reason']}")
-        else:
-            st.success("✅ Your current lineup appears to be optimal!")
-
-        # Show injured/unavailable players
-        injured_players = user_roster.filter(pl.col("injury_status").is_in(["IR", "O", "D", "S"]))
-        if len(injured_players) > 0:
-            st.subheader("⚠️ Injured/Unavailable Players")
+    with col1:
+        st.markdown("#### Current Starting Lineup")
+        if len(current_starters) > 0:
             st.dataframe(
-                injured_players.select(["full_name", "position", "injury_status", "value"]),
+                current_starters.select(["full_name", "position", "value", "trend"]).sort("value", descending=True),
                 column_config={
                     "full_name": st.column_config.Column("Player", width="medium"),
                     "position": st.column_config.Column("Position", width="small"),
-                    "injury_status": st.column_config.Column("Status", width="small"),
                     "value": st.column_config.NumberColumn("Value", width="small"),
+                    "trend": st.column_config.NumberColumn("Trend", format="%.2f", width="small", help=HELP_TEXT_TREND),
                 },
                 hide_index=True,
                 use_container_width=True,
             )
+        else:
+            st.info("No current starters found")
 
-    with tab3:
-        st.markdown("#### Positional Depth Analysis")
+    with col2:
+        st.markdown("#### Optimal Starting Lineup")
+        if len(optimal_starters) > 0:
+            st.dataframe(
+                optimal_starters.select(["full_name", "position", "value", "trend"]).sort("value", descending=True),
+                column_config={
+                    "full_name": st.column_config.Column("Player", width="medium"),
+                    "position": st.column_config.Column("Position", width="small"),
+                    "value": st.column_config.NumberColumn("Value", width="small"),
+                    "trend": st.column_config.NumberColumn("Trend", format="%.2f", width="small", help=HELP_TEXT_TREND),
+                },
+                hide_index=True,
+                use_container_width=True,
+            )
+        else:
+            st.info("Unable to generate optimal lineup")
 
-        depth_analysis = get_position_depth_analysis(user_roster)
 
-        # Create depth chart visualization
-        positions = ["QB", "RB", "WR", "TE"]
-        pos_counts = [depth_analysis.get(pos, {}).get("count", 0) for pos in positions]
-        pos_values = [depth_analysis.get(pos, {}).get("total_value", 0) for pos in positions]
+def _render_start_sit_recommendations_tab(
+    optimal_starters: pl.DataFrame,
+    current_starters: pl.DataFrame,
+    current_bench: pl.DataFrame,
+    user_roster: pl.DataFrame,
+) -> None:
+    """Render the start/sit recommendations tab."""
+    st.markdown("#### Start/Sit Recommendations")
 
-        fig = go.Figure()
+    recommendations = analyze_start_sit_decisions(optimal_starters, current_starters, current_bench)
 
-        fig.add_trace(go.Bar(name="Player Count", x=positions, y=pos_counts, yaxis="y", marker_color="lightblue"))
+    if recommendations:
+        for rec in recommendations:
+            if rec["type"] == "START":
+                st.success(f"▲ **START {rec['player']}** ({rec['position']}) - {rec['reason']}")
+            else:
+                st.warning(f"▼ **SIT {rec['player']}** ({rec['position']}) - {rec['reason']}")
+    else:
+        st.success("✅ Your current lineup appears to be optimal!")
 
-        fig.add_trace(go.Bar(name="Total Value", x=positions, y=pos_values, yaxis="y2", marker_color="lightcoral"))
-
-        fig.update_layout(
-            title="Roster Depth by Position",
-            xaxis_title="Position",
-            yaxis={"title": "Player Count", "side": "left"},
-            yaxis2={"title": "Total Value", "side": "right", "overlaying": "y"},
-            barmode="group",
-            height=400,
+    # Show injured/unavailable players
+    injured_players = user_roster.filter(pl.col("injury_status").is_in(["IR", "O", "D", "S"]))
+    if len(injured_players) > 0:
+        st.subheader("⚠️ Injured/Unavailable Players")
+        st.dataframe(
+            injured_players.select(["full_name", "position", "injury_status", "value"]),
+            column_config={
+                "full_name": st.column_config.Column("Player", width="medium"),
+                "position": st.column_config.Column("Position", width="small"),
+                "injury_status": st.column_config.Column("Status", width="small"),
+                "value": st.column_config.NumberColumn("Value", width="small"),
+            },
+            hide_index=True,
+            use_container_width=True,
         )
 
-        st.plotly_chart(fig, use_container_width=True)
 
-        # Detailed depth breakdown
-        col1, col2 = st.columns(2)
+def _render_depth_analysis_tab(user_roster: pl.DataFrame) -> None:
+    """Render the depth analysis tab."""
+    st.markdown("#### Positional Depth Analysis")
 
-        for i, position in enumerate(positions):
-            col = col1 if i % 2 == 0 else col2
+    depth_analysis = get_position_depth_analysis(user_roster)
 
-            with col:
-                st.markdown(f"##### {position} Depth")
-                depth_data = depth_analysis.get(position, {})
+    # Create depth chart visualization
+    positions = ["QB", "RB", "WR", "TE"]
+    pos_counts = [depth_analysis.get(pos, {}).get("count", 0) for pos in positions]
+    pos_values = [depth_analysis.get(pos, {}).get("total_value", 0) for pos in positions]
 
-                if depth_data.get("count", 0) > 0:
-                    st.write(f"**Players:** {depth_data['count']}")
-                    st.write(f"**Total Value:** {depth_data['total_value']:,}")
-                    st.write(f"**Avg Value:** {depth_data['avg_value']:.0f}")
+    fig = go.Figure()
 
-                    if depth_data.get("top_player"):
-                        top = depth_data["top_player"]
-                        st.write(f"**Top Player:** {top['full_name']} ({top['value']:,})")
-                else:
-                    st.write("No players at this position")
+    fig.add_trace(go.Bar(name="Player Count", x=positions, y=pos_counts, yaxis="y", marker_color="lightblue"))
 
-                st.markdown("---")
+    fig.add_trace(go.Bar(name="Total Value", x=positions, y=pos_values, yaxis="y2", marker_color="lightcoral"))
 
-    # Strategic insights
+    fig.update_layout(
+        title="Roster Depth by Position",
+        xaxis_title="Position",
+        yaxis={"title": "Player Count", "side": "left"},
+        yaxis2={"title": "Total Value", "side": "right", "overlaying": "y"},
+        barmode="group",
+        height=400,
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+
+    # Detailed depth breakdown
+    col1, col2 = st.columns(2)
+
+    for i, position in enumerate(positions):
+        col = col1 if i % 2 == 0 else col2
+
+        with col:
+            st.markdown(f"##### {position} Depth")
+            depth_data = depth_analysis.get(position, {})
+
+            if depth_data.get("count", 0) > 0:
+                st.write(f"**Players:** {depth_data['count']}")
+                st.write(f"**Total Value:** {depth_data['total_value']:,}")
+                st.write(f"**Avg Value:** {depth_data['avg_value']:.0f}")
+
+                if depth_data.get("top_player"):
+                    top = depth_data["top_player"]
+                    st.write(f"**Top Player:** {top['full_name']} ({top['value']:,})")
+            else:
+                st.write("No players at this position")
+
+            st.markdown("---")
+
+
+def _render_strategic_insights(
+    user_roster: pl.DataFrame, current_starters: pl.DataFrame, optimal_starters: pl.DataFrame
+) -> None:
+    """Render the strategic insights section."""
     with st.expander("🧠 Strategic Insights", expanded=False):
         st.markdown("### Lineup Optimization Tips:")
 
         insights = []
 
+        # Calculate value improvement
+        starter_value = current_starters.get_column("value").sum() if len(current_starters) > 0 else 0
+        optimal_value = optimal_starters.get_column("value").sum() if len(optimal_starters) > 0 else 0
+        value_improvement = optimal_value - starter_value
+
         # Value-based insights
-        if value_improvement > 100:
+        if value_improvement > VALUE_IMPROVEMENT_THRESHOLD:
             insights.append(
                 f"💡 You could improve your lineup value by {value_improvement:,} points by making optimal start/sit decisions"
             )
-        elif value_improvement < -50:
+        elif value_improvement < NEGATIVE_VALUE_THRESHOLD:
             insights.append(
                 "⚠️ Your current lineup may be overvaluing certain players - consider the optimal suggestions"
             )
@@ -403,7 +419,7 @@ def render_lineup_optimizer(user_input: UserInput) -> None:
                 insights.append(f"🚨 No {position}s on roster - major weakness")
             elif count == 1:
                 insights.append(f"⚠️ Only 1 {position} on roster - consider adding depth")
-            elif count >= 5:
+            elif count >= POSITION_DEPTH_THRESHOLD:
                 insights.append(f"📈 Strong {position} depth ({count} players) - potential trade assets")
 
         # Trend insights
@@ -421,7 +437,9 @@ def render_lineup_optimizer(user_input: UserInput) -> None:
         for insight in insights:
             st.markdown(f"- {insight}")
 
-    # Weekly preparation checklist
+
+def _render_weekly_checklist() -> None:
+    """Render the weekly preparation checklist."""
     with st.expander("📋 Weekly Preparation Checklist", expanded=False):
         st.markdown("""
         ### Before Setting Your Lineup:
@@ -453,8 +471,52 @@ def render_lineup_optimizer(user_input: UserInput) -> None:
         """)
 
 
+def render_lineup_optimizer(user_input: UserInput) -> None:
+    """
+    Render the lineup optimizer interface.
+
+    Args:
+    ----
+        user_input: UserInput object containing all user preferences
+
+    """
+    owner_id, current_username, league, ranking_set, starters_only, include_picks, time_frame = user_input
+
+    st.header("🎯 Lineup Optimizer")
+    st.markdown("Optimize your starting lineup and get strategic roster recommendations")
+
+    # Load data
+    players_df, rankings_df, user_roster, current_starters, current_bench = _load_optimizer_data(user_input)
+
+    if len(user_roster) == 0:
+        return
+
+    # Calculate optimal lineup
+    optimal_starters, optimal_bench = get_optimal_lineup(user_roster, league.roster_positions)
+
+    # Render roster overview
+    _render_roster_overview(user_roster, current_starters, optimal_starters)
+
+    # Lineup comparison tabs
+    st.subheader("Lineup Comparison")
+    tab1, tab2, tab3 = st.tabs(["Current vs Optimal", "Start/Sit Recommendations", "Depth Analysis"])
+
+    with tab1:
+        _render_current_vs_optimal_tab(current_starters, optimal_starters)
+
+    with tab2:
+        _render_start_sit_recommendations_tab(optimal_starters, current_starters, current_bench, user_roster)
+
+    with tab3:
+        _render_depth_analysis_tab(user_roster)
+
+    # Strategic insights and checklist
+    _render_strategic_insights(user_roster, current_starters, optimal_starters)
+    _render_weekly_checklist()
+
+
 def main() -> None:
-    """Main function for the lineup optimizer page."""
+    """Run the lineup optimizer page."""
     render_home_nav()
 
     user_input = get_user_input()

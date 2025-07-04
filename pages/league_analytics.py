@@ -6,7 +6,7 @@ value distribution, market trends, and historical performance tracking.
 """
 
 from datetime import datetime, timedelta
-from typing import Dict, List, Tuple
+from typing import Optional
 
 import numpy as np
 import plotly.express as px
@@ -25,6 +25,12 @@ from pages.shared_utils import (
 )
 
 st.set_page_config("League Analytics", ":chart_with_upwards_trend:", layout="wide")
+
+# Constants
+TREND_THRESHOLD = 0.05
+HIGH_VALUE_THRESHOLD = 3000
+MID_VALUE_THRESHOLD = 1000
+LOW_VALUE_THRESHOLD = 1000
 
 
 def calculate_competitive_balance(roster_df: pl.DataFrame) -> dict:
@@ -62,7 +68,7 @@ def calculate_competitive_balance(roster_df: pl.DataFrame) -> dict:
     min_value = min(values)
 
     # Gini coefficient for inequality
-    def gini_coefficient(values):
+    def gini_coefficient(values: list[float]) -> float:
         """Calculate Gini coefficient."""
         sorted_values = sorted(values)
         n = len(sorted_values)
@@ -134,14 +140,14 @@ def calculate_market_trends(roster_df: pl.DataFrame) -> dict:
         return {}
 
     # Trend analysis
-    trending_up = roster_df.filter(pl.col("trend") > 0.05)
-    trending_down = roster_df.filter(pl.col("trend") < -0.05)
-    stable = roster_df.filter((pl.col("trend") >= -0.05) & (pl.col("trend") <= 0.05))
+    trending_up = roster_df.filter(pl.col("trend") > TREND_THRESHOLD)
+    trending_down = roster_df.filter(pl.col("trend") < -TREND_THRESHOLD)
+    stable = roster_df.filter((pl.col("trend") >= -TREND_THRESHOLD) & (pl.col("trend") <= TREND_THRESHOLD))
 
     # Value tiers
-    high_value = roster_df.filter(pl.col("value") >= 3000)
-    mid_value = roster_df.filter((pl.col("value") >= 1000) & (pl.col("value") < 3000))
-    low_value = roster_df.filter(pl.col("value") < 1000)
+    high_value = roster_df.filter(pl.col("value") >= HIGH_VALUE_THRESHOLD)
+    mid_value = roster_df.filter((pl.col("value") >= MID_VALUE_THRESHOLD) & (pl.col("value") < HIGH_VALUE_THRESHOLD))
+    low_value = roster_df.filter(pl.col("value") < LOW_VALUE_THRESHOLD)
 
     # Age analysis (mock ages for demonstration)
     roster_with_age = roster_df.with_columns(
@@ -211,27 +217,16 @@ def analyze_value_concentration(roster_df: pl.DataFrame) -> dict:
     }
 
 
-def render_league_analytics(user_input: UserInput) -> None:
-    """
-    Render the league analytics interface.
-
-    Args:
-    ----
-        user_input: UserInput object containing all user preferences
-
-    """
-    owner_id, current_username, league, ranking_set, starters_only, include_picks, time_frame = user_input
-
-    st.header("📈 League Analytics")
-    st.markdown(f"Comprehensive analysis of **{league.name}** dynamics and trends")
-
+def _load_league_analytics_data(
+    user_input: UserInput,
+) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame, dict, pl.DataFrame, dict, dict]:
+    """Load and calculate all league analytics data."""
     # Get processed data
     with st.spinner("Loading league analytics..."):
         players_df, rankings_df, roster_df = get_processed_data(user_input)
 
     if len(roster_df) == 0:
-        st.warning("No roster data available for analysis.")
-        return
+        return players_df, rankings_df, roster_df, {}, pl.DataFrame(), {}, {}
 
     # Calculate analytics
     competitive_balance = calculate_competitive_balance(roster_df)
@@ -239,7 +234,19 @@ def render_league_analytics(user_input: UserInput) -> None:
     market_trends = calculate_market_trends(roster_df)
     value_concentration = analyze_value_concentration(roster_df)
 
-    # Overview metrics
+    return (
+        players_df,
+        rankings_df,
+        roster_df,
+        competitive_balance,
+        position_analysis,
+        market_trends,
+        value_concentration,
+    )
+
+
+def _render_overview_metrics(roster_df: pl.DataFrame, competitive_balance: dict) -> None:
+    """Render league overview metrics."""
     st.subheader("League Overview")
 
     col1, col2, col3, col4 = st.columns(4)
@@ -260,225 +267,228 @@ def render_league_analytics(user_input: UserInput) -> None:
         balance_score = competitive_balance.get("competitive_balance_score", 0)
         st.metric("Competitive Balance", f"{balance_score:.1f}/100")
 
-    # Main analysis tabs
-    tab1, tab2, tab3, tab4 = st.tabs(
-        ["Competitive Balance", "Position Analysis", "Market Trends", "Value Distribution"]
-    )
 
-    with tab1:
-        st.markdown("#### Team Value Distribution")
+def _render_competitive_balance_tab(competitive_balance: dict) -> None:
+    """Render the competitive balance analysis tab."""
+    st.markdown("#### Team Value Distribution")
 
-        if competitive_balance and "team_values" in competitive_balance:
-            team_values = competitive_balance["team_values"]
+    if competitive_balance and "team_values" in competitive_balance:
+        team_values = competitive_balance["team_values"]
 
-            # Team value comparison chart
-            fig = px.bar(
-                team_values.to_pandas(),
-                x="owner_name",
-                y="total_value",
-                title="Team Total Values",
-                labels={"owner_name": "Team Owner", "total_value": "Total Value"},
-            )
-            fig.update_layout(height=400, xaxis_tickangle=-45)
-            st.plotly_chart(fig, use_container_width=True)
+        # Team value comparison chart
+        fig = px.bar(
+            team_values.to_pandas(),
+            x="owner_name",
+            y="total_value",
+            title="Team Total Values",
+            labels={"owner_name": "Team Owner", "total_value": "Total Value"},
+        )
+        fig.update_layout(height=400, xaxis_tickangle=-45)
+        st.plotly_chart(fig, use_container_width=True)
 
-            # Balance metrics
-            col1, col2 = st.columns(2)
+        # Balance metrics
+        col1, col2 = st.columns(2)
 
-            with col1:
-                st.markdown("##### Balance Metrics")
-                gini = competitive_balance.get("gini_coefficient", 0)
-                cv = competitive_balance.get("coefficient_variation", 0)
-                value_range = competitive_balance.get("value_range", 0)
+        with col1:
+            st.markdown("##### Balance Metrics")
+            gini = competitive_balance.get("gini_coefficient", 0)
+            cv = competitive_balance.get("coefficient_variation", 0)
+            value_range = competitive_balance.get("value_range", 0)
 
-                st.metric("Gini Coefficient", f"{gini:.3f}", help="0 = perfectly equal, 1 = perfectly unequal")
-                st.metric("Coefficient of Variation", f"{cv:.3f}", help="Standard deviation / mean")
-                st.metric("Value Range", f"{value_range:,.0f}", help="Difference between highest and lowest team")
+            st.metric("Gini Coefficient", f"{gini:.3f}", help="0 = perfectly equal, 1 = perfectly unequal")
+            st.metric("Coefficient of Variation", f"{cv:.3f}", help="Standard deviation / mean")
+            st.metric("Value Range", f"{value_range:,.0f}", help="Difference between highest and lowest team")
 
-            with col2:
-                st.markdown("##### Team Rankings")
-                st.dataframe(
-                    team_values.with_row_index("rank")
-                    .with_columns([(pl.col("rank") + 1).alias("rank")])
-                    .select(["rank", "owner_name", "total_value", "roster_size"]),
-                    column_config={
-                        "rank": st.column_config.NumberColumn("Rank", width="small"),
-                        "owner_name": st.column_config.Column("Owner", width="medium"),
-                        "total_value": st.column_config.NumberColumn("Total Value", format="%d", width="medium"),
-                        "roster_size": st.column_config.NumberColumn("Roster Size", width="small"),
-                    },
-                    hide_index=True,
-                    use_container_width=True,
-                )
-
-    with tab2:
-        st.markdown("#### Position Distribution Analysis")
-
-        if len(position_analysis) > 0:
-            # Position value distribution
-            fig = px.treemap(
-                position_analysis.to_pandas(),
-                path=["position"],
-                values="total_value",
-                title="League Value by Position",
-                color="avg_value",
-                color_continuous_scale="Viridis",
-            )
-            fig.update_layout(height=400)
-            st.plotly_chart(fig, use_container_width=True)
-
-            # Position statistics table
-            st.markdown("##### Position Statistics")
+        with col2:
+            st.markdown("##### Team Rankings")
             st.dataframe(
-                position_analysis,
+                team_values.with_row_index("rank")
+                .with_columns([(pl.col("rank") + 1).alias("rank")])
+                .select(["rank", "owner_name", "total_value", "roster_size"]),
                 column_config={
-                    "position": st.column_config.Column("Position", width="small"),
-                    "total_players": st.column_config.NumberColumn("Players", width="small"),
+                    "rank": st.column_config.NumberColumn("Rank", width="small"),
+                    "owner_name": st.column_config.Column("Owner", width="medium"),
                     "total_value": st.column_config.NumberColumn("Total Value", format="%d", width="medium"),
-                    "avg_value": st.column_config.NumberColumn("Avg Value", format="%.0f", width="medium"),
-                    "value_std": st.column_config.NumberColumn("Std Dev", format="%.0f", width="medium"),
-                    "max_value": st.column_config.NumberColumn("Max", format="%d", width="medium"),
-                    "min_value": st.column_config.NumberColumn("Min", format="%d", width="medium"),
+                    "roster_size": st.column_config.NumberColumn("Roster Size", width="small"),
                 },
                 hide_index=True,
                 use_container_width=True,
             )
 
-            # Position scarcity analysis
-            st.markdown("##### Position Scarcity Analysis")
-            scarcity_df = (
-                position_analysis.with_columns(
-                    [
-                        (pl.col("total_value") / pl.col("total_players")).alias("value_per_player"),
-                        pl.col("value_std").fill_null(0).alias("volatility"),  # Replace NaN with 0
-                    ]
-                )
-                .select(["position", "total_players", "value_per_player", "volatility"])
-                .filter(pl.col("value_per_player").is_not_null())
-                .filter(pl.col("volatility").is_not_null())
-                .filter(pl.col("volatility") >= 0)
+
+def _render_position_analysis_tab(position_analysis: pl.DataFrame) -> None:
+    """Render the position analysis tab."""
+    st.markdown("#### Position Distribution Analysis")
+
+    if len(position_analysis) > 0:
+        # Position value distribution
+        fig = px.treemap(
+            position_analysis.to_pandas(),
+            path=["position"],
+            values="total_value",
+            title="League Value by Position",
+            color="avg_value",
+            color_continuous_scale="Viridis",
+        )
+        fig.update_layout(height=400)
+        st.plotly_chart(fig, use_container_width=True)
+
+        # Position statistics table
+        st.markdown("##### Position Statistics")
+        st.dataframe(
+            position_analysis,
+            column_config={
+                "position": st.column_config.Column("Position", width="small"),
+                "total_players": st.column_config.NumberColumn("Players", width="small"),
+                "total_value": st.column_config.NumberColumn("Total Value", format="%d", width="medium"),
+                "avg_value": st.column_config.NumberColumn("Avg Value", format="%.0f", width="medium"),
+                "value_std": st.column_config.NumberColumn("Std Dev", format="%.0f", width="medium"),
+                "max_value": st.column_config.NumberColumn("Max", format="%d", width="medium"),
+                "min_value": st.column_config.NumberColumn("Min", format="%d", width="medium"),
+            },
+            hide_index=True,
+            use_container_width=True,
+        )
+
+        # Position scarcity analysis
+        st.markdown("##### Position Scarcity Analysis")
+        scarcity_df = (
+            position_analysis.with_columns(
+                [
+                    (pl.col("total_value") / pl.col("total_players")).alias("value_per_player"),
+                    pl.col("value_std").fill_null(0).alias("volatility"),  # Replace NaN with 0
+                ]
             )
+            .select(["position", "total_players", "value_per_player", "volatility"])
+            .filter(pl.col("value_per_player").is_not_null())
+            .filter(pl.col("volatility").is_not_null())
+            .filter(pl.col("volatility") >= 0)
+        )
 
-            if len(scarcity_df) > 0:
-                fig = px.scatter(
-                    scarcity_df.to_pandas(),
-                    x="total_players",
-                    y="value_per_player",
-                    size="volatility",
-                    color="position",
-                    title="Position Scarcity vs Value (Bubble size = volatility)",
-                    labels={
-                        "total_players": "Number of Players",
-                        "value_per_player": "Average Value per Player",
-                        "volatility": "Value Volatility",
-                    },
-                )
-                fig.update_layout(height=400)
-                st.plotly_chart(fig, use_container_width=True)
-            else:
-                st.info("Not enough data available for scarcity analysis.")
+        if len(scarcity_df) > 0:
+            fig = px.scatter(
+                scarcity_df.to_pandas(),
+                x="total_players",
+                y="value_per_player",
+                size="volatility",
+                color="position",
+                title="Position Scarcity vs Value (Bubble size = volatility)",
+                labels={
+                    "total_players": "Number of Players",
+                    "value_per_player": "Average Value per Player",
+                    "volatility": "Value Volatility",
+                },
+            )
+            fig.update_layout(height=400)
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("Not enough data available for scarcity analysis.")
 
-    with tab3:
-        st.markdown("#### Market Trends & Player Movement")
 
-        if market_trends:
-            # Trend overview
-            col1, col2, col3 = st.columns(3)
+def _render_market_trends_tab(market_trends: dict) -> None:
+    """Render the market trends analysis tab."""
+    st.markdown("#### Market Trends & Player Movement")
 
-            with col1:
-                trending_up = market_trends.get("trending_up_count", 0)
-                st.metric("📈 Trending Up", trending_up)
+    if market_trends:
+        # Trend overview
+        col1, col2, col3 = st.columns(3)
 
-            with col2:
-                stable = market_trends.get("stable_count", 0)
-                st.metric("➡️ Stable", stable)
+        with col1:
+            trending_up = market_trends.get("trending_up_count", 0)
+            st.metric("📈 Trending Up", trending_up)
 
-            with col3:
-                trending_down = market_trends.get("trending_down_count", 0)
-                st.metric("📉 Trending Down", trending_down)
+        with col2:
+            stable = market_trends.get("stable_count", 0)
+            st.metric("➡️ Stable", stable)
 
-            # Value tier distribution
-            st.markdown("##### Player Value Tiers")
+        with col3:
+            trending_down = market_trends.get("trending_down_count", 0)
+            st.metric("📉 Trending Down", trending_down)
 
-            tier_data = {
-                "Tier": ["Elite (3000+)", "High (1000-2999)", "Depth (<1000)"],
-                "Count": [
-                    market_trends.get("high_value_count", 0),
-                    market_trends.get("mid_value_count", 0),
-                    market_trends.get("low_value_count", 0),
-                ],
-            }
+        # Value tier distribution
+        st.markdown("##### Player Value Tiers")
 
-            fig = px.pie(tier_data, values="Count", names="Tier", title="Distribution of Players by Value Tier")
+        tier_data = {
+            "Tier": ["Elite (3000+)", "High (1000-2999)", "Depth (<1000)"],
+            "Count": [
+                market_trends.get("high_value_count", 0),
+                market_trends.get("mid_value_count", 0),
+                market_trends.get("low_value_count", 0),
+            ],
+        }
+
+        fig = px.pie(tier_data, values="Count", names="Tier", title="Distribution of Players by Value Tier")
+        fig.update_layout(height=400)
+        st.plotly_chart(fig, use_container_width=True)
+
+        # Age vs Value analysis (if available)
+        if "roster_with_age" in market_trends:
+            roster_with_age = market_trends["roster_with_age"]
+
+            st.markdown("##### Age vs Value Analysis")
+            fig = px.scatter(
+                roster_with_age.to_pandas(),
+                x="age",
+                y="value",
+                color="position",
+                title="Player Age vs Value by Position",
+                labels={"age": "Age", "value": "Fantasy Value"},
+            )
             fig.update_layout(height=400)
             st.plotly_chart(fig, use_container_width=True)
 
-            # Age vs Value analysis (if available)
-            if "roster_with_age" in market_trends:
-                roster_with_age = market_trends["roster_with_age"]
 
-                st.markdown("##### Age vs Value Analysis")
-                fig = px.scatter(
-                    roster_with_age.to_pandas(),
-                    x="age",
-                    y="value",
-                    color="position",
-                    title="Player Age vs Value by Position",
-                    labels={"age": "Age", "value": "Fantasy Value"},
-                )
-                fig.update_layout(height=400)
-                st.plotly_chart(fig, use_container_width=True)
+def _render_value_distribution_tab(value_concentration: dict) -> None:
+    """Render the value distribution analysis tab."""
+    st.markdown("#### Value Concentration & Elite Players")
 
-    with tab4:
-        st.markdown("#### Value Concentration & Elite Players")
+    if value_concentration:
+        # Concentration metrics
+        col1, col2, col3, col4 = st.columns(4)
 
-        if value_concentration:
-            # Concentration metrics
-            col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            top_1 = value_concentration.get("top_1_concentration", 0)
+            st.metric("Top 1%", f"{top_1:.1f}%")
 
-            with col1:
-                top_1 = value_concentration.get("top_1_concentration", 0)
-                st.metric("Top 1%", f"{top_1:.1f}%")
+        with col2:
+            top_5 = value_concentration.get("top_5_concentration", 0)
+            st.metric("Top 5%", f"{top_5:.1f}%")
 
-            with col2:
-                top_5 = value_concentration.get("top_5_concentration", 0)
-                st.metric("Top 5%", f"{top_5:.1f}%")
+        with col3:
+            top_10 = value_concentration.get("top_10_concentration", 0)
+            st.metric("Top 10%", f"{top_10:.1f}%")
 
-            with col3:
-                top_10 = value_concentration.get("top_10_concentration", 0)
-                st.metric("Top 10%", f"{top_10:.1f}%")
+        with col4:
+            top_20 = value_concentration.get("top_20_concentration", 0)
+            st.metric("Top 20%", f"{top_20:.1f}%")
 
-            with col4:
-                top_20 = value_concentration.get("top_20_concentration", 0)
-                st.metric("Top 20%", f"{top_20:.1f}%")
+        st.markdown("*Percentage of total league value held by top players*")
 
-            st.markdown("*Percentage of total league value held by top players*")
+        # Top players table
+        if "top_players" in value_concentration:
+            top_players = value_concentration["top_players"]
 
-            # Top players table
-            if "top_players" in value_concentration:
-                top_players = value_concentration["top_players"]
+            st.markdown("##### Most Valuable Players in League")
+            st.dataframe(
+                top_players.with_row_index("rank")
+                .with_columns([(pl.col("rank") + 1).alias("rank")])
+                .select(["rank", "full_name", "position", "owner_name", "value", "trend"])
+                .head(15),
+                column_config={
+                    "rank": st.column_config.NumberColumn("Rank", width="small"),
+                    "full_name": st.column_config.Column("Player", width="medium"),
+                    "position": st.column_config.Column("Pos", width="small"),
+                    "owner_name": st.column_config.Column("Owner", width="medium"),
+                    "value": st.column_config.NumberColumn("Value", format="%d", width="medium"),
+                    "trend": st.column_config.NumberColumn("Trend", format="%.3f", width="small", help=HELP_TEXT_TREND),
+                },
+                hide_index=True,
+                use_container_width=True,
+            )
 
-                st.markdown("##### Most Valuable Players in League")
-                st.dataframe(
-                    top_players.with_row_index("rank")
-                    .with_columns([(pl.col("rank") + 1).alias("rank")])
-                    .select(["rank", "full_name", "position", "owner_name", "value", "trend"])
-                    .head(15),
-                    column_config={
-                        "rank": st.column_config.NumberColumn("Rank", width="small"),
-                        "full_name": st.column_config.Column("Player", width="medium"),
-                        "position": st.column_config.Column("Pos", width="small"),
-                        "owner_name": st.column_config.Column("Owner", width="medium"),
-                        "value": st.column_config.NumberColumn("Value", format="%d", width="medium"),
-                        "trend": st.column_config.NumberColumn(
-                            "Trend", format="%.3f", width="small", help=HELP_TEXT_TREND
-                        ),
-                    },
-                    hide_index=True,
-                    use_container_width=True,
-                )
 
-    # League insights
+def _render_league_insights() -> None:
+    """Render the league insights section."""
     with st.expander("🧠 League Analytics Insights", expanded=False):
         st.markdown("""
         ### How to Use League Analytics:
@@ -511,8 +521,55 @@ def render_league_analytics(user_input: UserInput) -> None:
         """)
 
 
+def render_league_analytics(user_input: UserInput) -> None:
+    """
+    Render the league analytics interface.
+
+    Args:
+    ----
+        user_input: UserInput object containing all user preferences
+
+    """
+    owner_id, current_username, league, ranking_set, starters_only, include_picks, time_frame = user_input
+
+    st.header("📈 League Analytics")
+    st.markdown(f"Comprehensive analysis of **{league.name}** dynamics and trends")
+
+    # Load and calculate analytics data
+    (players_df, rankings_df, roster_df, competitive_balance, position_analysis, market_trends, value_concentration) = (
+        _load_league_analytics_data(user_input)
+    )
+
+    if len(roster_df) == 0:
+        st.warning("No roster data available for analysis.")
+        return
+
+    # Overview metrics
+    _render_overview_metrics(roster_df, competitive_balance)
+
+    # Main analysis tabs
+    tab1, tab2, tab3, tab4 = st.tabs(
+        ["Competitive Balance", "Position Analysis", "Market Trends", "Value Distribution"]
+    )
+
+    with tab1:
+        _render_competitive_balance_tab(competitive_balance)
+
+    with tab2:
+        _render_position_analysis_tab(position_analysis)
+
+    with tab3:
+        _render_market_trends_tab(market_trends)
+
+    with tab4:
+        _render_value_distribution_tab(value_concentration)
+
+    # League insights
+    _render_league_insights()
+
+
 def main() -> None:
-    """Main function for the league analytics page."""
+    """Run the league analytics page."""
     render_home_nav()
 
     user_input = get_user_input()

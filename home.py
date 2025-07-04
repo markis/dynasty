@@ -102,93 +102,101 @@ def render_home(user_input: UserInput) -> None:
     render_nav()
 
 
-def render_nav() -> None:
-    """
-    Render the navigation section with clickable cards for each analysis page.
+def _render_nav_card(title: str, description: str, button_text: str, button_key: str, page_path: str) -> None:
+    """Render a single navigation card with title, description, and button."""
+    with st.container():
+        st.markdown(f"### {title}")
+        st.markdown(description)
+        if st.button(button_text, key=button_key, use_container_width=True):
+            st.switch_page(page_path)
 
-    This function creates a two-column layout with styled navigation cards.
-    Each card contains:
-    - An icon and title
-    - A short description of the page's purpose
-    - A button that redirects to the corresponding Streamlit page
 
-    The cards are organized into two columns with dividers between each card.
-    A tip box is displayed at the bottom with reminders about sidebar settings.
-    """
-    # Create clickable navigation cards
-    nav_col1, nav_col2 = st.columns(2)
+def _render_nav_column_1() -> None:
+    """Render the first column of navigation cards."""
+    _render_nav_card(
+        "🏈 Team Analysis",
+        "Compare team valuations and roster breakdowns",
+        "Go to Team Analysis →",
+        "nav_team",
+        "pages/team_analysis.py",
+    )
 
-    with nav_col1:
-        with st.container():
-            st.markdown("### 🏈 Team Analysis")
-            st.markdown("Compare team valuations and roster breakdowns")
-            if st.button("Go to Team Analysis →", key="nav_team", use_container_width=True):
-                st.switch_page("pages/team_analysis.py")
+    st.markdown("---")
 
-        st.markdown("---")
+    _render_nav_card(
+        "🔄 Trade Analyzer",
+        "Analyze potential trades and assess fairness",
+        "Go to Trade Analyzer →",
+        "nav_trade",
+        "pages/trade_analyzer.py",
+    )
 
-        with st.container():
-            st.markdown("### 🔄 Trade Analyzer")
-            st.markdown("Analyze potential trades and assess fairness")
-            if st.button("Go to Trade Analyzer →", key="nav_trade", use_container_width=True):
-                st.switch_page("pages/trade_analyzer.py")
+    st.markdown("---")
 
-        st.markdown("---")
+    _render_nav_card(
+        "🎯 Lineup Optimizer",
+        "Optimize your starting lineup with strategic insights",
+        "Go to Lineup Optimizer →",
+        "nav_lineup",
+        "pages/lineup_optimizer.py",
+    )
 
-        with st.container():
-            st.markdown("### 🎯 Lineup Optimizer")
-            st.markdown("Optimize your starting lineup with strategic insights")
-            if st.button("Go to Lineup Optimizer →", key="nav_lineup", use_container_width=True):
-                st.switch_page("pages/lineup_optimizer.py")
+    st.markdown("---")
 
-        st.markdown("---")
+    _render_nav_card(
+        "🏥 IR Stash", "Discover injured players worth stashing", "Go to IR Stash →", "nav_ir", "pages/ir_stash.py"
+    )
 
-        with st.container():
-            st.markdown("### 🏥 IR Stash")
-            st.markdown("Discover injured players worth stashing")
-            if st.button("Go to IR Stash →", key="nav_ir", use_container_width=True):
-                st.switch_page("pages/ir_stash.py")
 
-    with nav_col2:
-        with st.container():
-            st.markdown("### 🏃 Free Agents")
-            st.markdown("Find valuable available players")
-            if st.button("Go to Free Agents →", key="nav_fa", use_container_width=True):
-                st.switch_page("pages/free_agents.py")
+def _render_nav_column_2() -> None:
+    """Render the second column of navigation cards."""
+    _render_nav_card(
+        "🏃 Free Agents", "Find valuable available players", "Go to Free Agents →", "nav_fa", "pages/free_agents.py"
+    )
 
-        st.markdown("---")
+    st.markdown("---")
 
-        with st.container():
-            st.markdown("### 📊 Player Rankings")
-            st.markdown("Browse complete player rankings with filtering")
-            if st.button("Go to Player Rankings →", key="nav_rankings", use_container_width=True):
-                st.switch_page("pages/player_rankings.py")
+    _render_nav_card(
+        "📊 Player Rankings",
+        "Browse complete player rankings with filtering",
+        "Go to Player Rankings →",
+        "nav_rankings",
+        "pages/player_rankings.py",
+    )
 
-        st.markdown("---")
+    st.markdown("---")
 
-        with st.container():
-            st.markdown("### 📈 League Analytics")
-            st.markdown("Analyze league dynamics, competitive balance, and market trends")
-            if st.button("Go to League Analytics →", key="nav_analytics", use_container_width=True):
-                st.switch_page("pages/league_analytics.py")
+    _render_nav_card(
+        "📈 League Analytics",
+        "Analyze league dynamics, competitive balance, and market trends",
+        "Go to League Analytics →",
+        "nav_analytics",
+        "pages/league_analytics.py",
+    )
 
-        st.markdown("---")
+    st.markdown("---")
 
-        with st.container():
-            st.markdown("### 🔍 Player Search & Compare")
-            st.markdown("Advanced player search with side-by-side comparisons")
-            if st.button("Go to Player Search →", key="nav_search", use_container_width=True):
-                st.switch_page("pages/player_search.py")
+    _render_nav_card(
+        "🔍 Player Search & Compare",
+        "Advanced player search with side-by-side comparisons",
+        "Go to Player Search →",
+        "nav_search",
+        "pages/player_search.py",
+    )
 
-        st.markdown("---")
+    st.markdown("---")
 
-        with st.container():
-            st.markdown("### 🤖 LLM Prompt Generator")
-            st.markdown("Generate contextual prompts for ChatGPT, Claude, and other AI assistants")
-            if st.button("Go to LLM Prompts →", key="nav_llm", use_container_width=True):
-                st.switch_page("pages/llm_prompts.py")
+    _render_nav_card(
+        "🤖 LLM Prompt Generator",
+        "Generate contextual prompts for ChatGPT, Claude, and other AI assistants",
+        "Go to LLM Prompts →",
+        "nav_llm",
+        "pages/llm_prompts.py",
+    )
 
-    # Settings reminder
+
+def _render_settings_tip() -> None:
+    """Render the settings reminder tip box."""
     st.info("""
     💡 **Tip**: Use the sidebar to adjust your analysis settings:
     - Change ranking sources (KeepTradeCut, DynastyProcess, etc.)
@@ -198,8 +206,28 @@ def render_nav() -> None:
     """)
 
 
+def render_nav() -> None:
+    """
+    Render the navigation section with clickable cards for each analysis page.
+
+    This function creates a two-column layout with styled navigation cards.
+    Each card contains an icon, title, description, and navigation button.
+    """
+    # Create clickable navigation cards
+    nav_col1, nav_col2 = st.columns(2)
+
+    with nav_col1:
+        _render_nav_column_1()
+
+    with nav_col2:
+        _render_nav_column_2()
+
+    # Settings reminder
+    _render_settings_tip()
+
+
 def main() -> None:
-    """Main function for the home page."""
+    """Run the main home page."""
     user_input = get_user_input()
     if user_input:
         render_home(user_input)

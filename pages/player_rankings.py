@@ -12,6 +12,7 @@ import streamlit as st
 from pages.shared_utils import (
     HELP_TEXT_TREND,
     POSITIONS,
+    UserInput,
     get_processed_data,
     get_user_input,
     render_home_nav,
@@ -19,20 +20,12 @@ from pages.shared_utils import (
 
 st.set_page_config("Player Rankings", ":bar_chart:", layout="wide")
 
+# Constants
+STABLE_TREND_THRESHOLD = 0.1
 
-def render_player_rankings(user_input) -> None:
-    """
-    Render player rankings analysis.
 
-    Args:
-    ----
-        user_input: UserInput object containing all user preferences
-
-    """
-    owner_id, current_username, league, ranking_set, starters_only, include_picks, time_frame = user_input
-
-    st.header(f"Player Rankings - {ranking_set.value}")
-
+def _load_rankings_data(user_input: UserInput) -> pl.DataFrame:
+    """Load and process player rankings data."""
     # Progress bar for data loading
     prog = st.progress(0)
 
@@ -42,26 +35,28 @@ def render_player_rankings(user_input) -> None:
     _ = prog.empty()
 
     # Get all rankings (not just league rosters)
-    all_rankings_df = rankings_df.filter(pl.col("value").is_not_null()).sort("value", descending=True, nulls_last=True)
+    return rankings_df.filter(pl.col("value").is_not_null()).sort("value", descending=True, nulls_last=True)
 
-    # Sidebar filters
-    st.sidebar.subheader("Ranking Filters")
 
-    # Position filter
+def _render_position_filter(all_rankings_df: pl.DataFrame) -> list[str]:
+    """Render position filter in sidebar."""
     available_positions = sorted(
         [pos for pos in all_rankings_df.get_column("position").unique().to_list() if pos is not None]
     )
-    selected_positions = st.sidebar.multiselect(
+    return st.sidebar.multiselect(
         "Select positions", options=available_positions, default=available_positions, help="Filter by position"
     )
 
-    # Apply position filter
-    if selected_positions:
-        filtered_rankings = all_rankings_df.filter(pl.col("position").is_in(selected_positions))
-    else:
-        filtered_rankings = all_rankings_df
 
-    # Value range filter
+def _apply_position_filter(all_rankings_df: pl.DataFrame, selected_positions: list[str]) -> pl.DataFrame:
+    """Apply position filter to rankings data."""
+    if selected_positions:
+        return all_rankings_df.filter(pl.col("position").is_in(selected_positions))
+    return all_rankings_df
+
+
+def _render_value_range_filter(filtered_rankings: pl.DataFrame) -> pl.DataFrame:
+    """Render value range filter and apply it."""
     if len(filtered_rankings) > 0:
         value_col = filtered_rankings.get_column("value")
         min_val = value_col.min()
@@ -79,11 +74,13 @@ def render_player_rankings(user_input) -> None:
                 help="Filter by value range",
             )
 
-            filtered_rankings = filtered_rankings.filter(
-                (pl.col("value") >= value_range[0]) & (pl.col("value") <= value_range[1])
-            )
+            return filtered_rankings.filter((pl.col("value") >= value_range[0]) & (pl.col("value") <= value_range[1]))
 
-    # Trend filter
+    return filtered_rankings
+
+
+def _render_trend_filter(filtered_rankings: pl.DataFrame) -> pl.DataFrame:
+    """Render trend filter and apply it."""
     if len(filtered_rankings) > 0:
         trend_col = filtered_rankings.get_column("trend")
         trend_min = trend_col.min()
@@ -97,20 +94,25 @@ def render_player_rankings(user_input) -> None:
             )
 
             if trend_filter == "Rising (>0)":
-                filtered_rankings = filtered_rankings.filter(pl.col("trend") > 0)
-            elif trend_filter == "Falling (<0)":
-                filtered_rankings = filtered_rankings.filter(pl.col("trend") < 0)
-            elif trend_filter == "Stable (≈0)":
-                filtered_rankings = filtered_rankings.filter(pl.col("trend").abs() < 0.1)
+                return filtered_rankings.filter(pl.col("trend") > 0)
+            if trend_filter == "Falling (<0)":
+                return filtered_rankings.filter(pl.col("trend") < 0)
+            if trend_filter == "Stable (≈0)":
+                return filtered_rankings.filter(pl.col("trend").abs() < STABLE_TREND_THRESHOLD)
 
-    # Top N filter
+    return filtered_rankings
+
+
+def _render_top_n_filter(filtered_rankings: pl.DataFrame) -> pl.DataFrame:
+    """Render top N filter and apply it."""
     top_n = st.sidebar.number_input(
         "Show Top N Players", min_value=10, max_value=500, value=100, step=10, help="Limit results to top N players"
     )
+    return filtered_rankings.head(top_n)
 
-    filtered_rankings = filtered_rankings.head(top_n)
 
-    # Show statistics
+def _render_rankings_statistics(all_rankings_df: pl.DataFrame, filtered_rankings: pl.DataFrame) -> None:
+    """Render rankings statistics."""
     col1, col2, col3, col4 = st.columns(4)
     with col1:
         st.metric("Total Players", len(all_rankings_df))
@@ -127,7 +129,9 @@ def render_player_rankings(user_input) -> None:
             positive_trends = filtered_rankings.filter(pl.col("trend") > 0)
             st.metric("Rising Players", len(positive_trends))
 
-    # Value distribution chart
+
+def _render_value_distribution_chart(filtered_rankings: pl.DataFrame) -> None:
+    """Render value distribution chart."""
     if len(filtered_rankings) > 0:
         st.subheader("Value Distribution by Position")
 
@@ -142,7 +146,9 @@ def render_player_rankings(user_input) -> None:
         fig.update_layout(xaxis_title="Position", yaxis_title="Value")
         st.plotly_chart(fig, use_container_width=True)
 
-    # Rankings table
+
+def _render_rankings_table(filtered_rankings: pl.DataFrame) -> None:
+    """Render the main player rankings table."""
     st.subheader("Player Rankings")
 
     if len(filtered_rankings) > 0:
@@ -169,7 +175,9 @@ def render_player_rankings(user_input) -> None:
     else:
         st.info("No players match your current filters.")
 
-    # Position rankings breakdown
+
+def _render_position_breakdown(filtered_rankings: pl.DataFrame) -> None:
+    """Render position rankings breakdown with tabs."""
     if len(filtered_rankings) > 0:
         st.subheader("Position Rankings")
 
@@ -233,7 +241,9 @@ def render_player_rankings(user_input) -> None:
                             use_container_width=True,
                         )
 
-    # Trend analysis
+
+def _render_trend_analysis(filtered_rankings: pl.DataFrame) -> None:
+    """Render trend analysis section."""
     with st.expander("Trend Analysis", expanded=False):
         if len(filtered_rankings) > 0:
             st.subheader("Biggest Movers")
@@ -279,6 +289,54 @@ def render_player_rankings(user_input) -> None:
                     )
                 else:
                     st.info("No falling players in current filter.")
+
+
+def render_player_rankings(user_input: UserInput) -> None:
+    """
+    Render player rankings analysis.
+
+    Args:
+    ----
+        user_input: UserInput object containing all user preferences
+
+    """
+    owner_id, current_username, league, ranking_set, starters_only, include_picks, time_frame = user_input
+
+    st.header(f"Player Rankings - {ranking_set.value}")
+
+    # Load data
+    all_rankings_df = _load_rankings_data(user_input)
+
+    # Sidebar filters
+    st.sidebar.subheader("Ranking Filters")
+
+    # Position filter
+    selected_positions = _render_position_filter(all_rankings_df)
+    filtered_rankings = _apply_position_filter(all_rankings_df, selected_positions)
+
+    # Value range filter
+    filtered_rankings = _render_value_range_filter(filtered_rankings)
+
+    # Trend filter
+    filtered_rankings = _render_trend_filter(filtered_rankings)
+
+    # Top N filter
+    filtered_rankings = _render_top_n_filter(filtered_rankings)
+
+    # Show statistics
+    _render_rankings_statistics(all_rankings_df, filtered_rankings)
+
+    # Value distribution chart
+    _render_value_distribution_chart(filtered_rankings)
+
+    # Rankings table
+    _render_rankings_table(filtered_rankings)
+
+    # Position rankings breakdown
+    _render_position_breakdown(filtered_rankings)
+
+    # Trend analysis
+    _render_trend_analysis(filtered_rankings)
 
 
 def main() -> None:

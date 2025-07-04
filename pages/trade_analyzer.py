@@ -5,14 +5,12 @@ This page provides comprehensive trade analysis including value calculations,
 fairness assessments, and trade recommendations based on player rankings.
 """
 
-import plotly.express as px
 import plotly.graph_objects as go
 import polars as pl
 import streamlit as st
 
 from pages.shared_utils import (
     HELP_TEXT_TREND,
-    POSITIONS,
     UserInput,
     get_processed_data,
     get_user_input,
@@ -20,6 +18,12 @@ from pages.shared_utils import (
 )
 
 st.set_page_config("Trade Analyzer", ":arrows_counterclockwise:", layout="wide")
+
+# Constants
+MIN_TEAMS_FOR_TRADE = 2
+VALUE_DIFFERENCE_THRESHOLD = 50
+EXCELLENT_FAIRNESS_THRESHOLD = 90
+GOOD_FAIRNESS_THRESHOLD = 75
 
 
 def init_trade_session_state() -> None:
@@ -89,14 +93,15 @@ def calculate_trade_metrics(team_a_players: list, team_b_players: list, roster_d
 
 
 def suggest_alternatives(
-    selected_team_a: str,
-    selected_team_b: str,
+    team_info: tuple[str, str],
     roster_df: pl.DataFrame,
-    current_a_players: list,
-    current_b_players: list,
+    current_players: tuple[list, list],
     target_difference: int = 50,
 ) -> list:
     """Suggest alternative trades to balance the current trade."""
+    selected_team_a, selected_team_b = team_info
+    current_a_players, current_b_players = current_players
+
     if not current_a_players and not current_b_players:
         return []
 
@@ -162,33 +167,20 @@ def suggest_alternatives(
     return suggestions[:5]  # Return top 5 suggestions
 
 
-def render_trade_analyzer(user_input: UserInput) -> None:
-    """
-    Render the trade analyzer interface.
-
-    Args:
-    ----
-        user_input: UserInput object containing all user preferences
-
-    """
-    owner_id, current_username, league, ranking_set, starters_only, include_picks, time_frame = user_input
-
-    # Initialize trade-specific session state
-    init_trade_session_state()
-
-    st.header("🔄 Trade Analyzer")
-    st.markdown("Analyze potential trades between teams in your league")
-
-    # Get processed data (cached)
+def _load_trade_data(user_input: UserInput) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]:
+    """Load and cache trade data."""
     if "trade_data" not in st.session_state:
         with st.spinner("Loading league data..."):
             players_df, rankings_df, roster_df = get_processed_data(user_input)
             st.session_state.trade_data = (players_df, rankings_df, roster_df)
     else:
         players_df, rankings_df, roster_df = st.session_state.trade_data
+    return players_df, rankings_df, roster_df
 
-    # Get list of team owners
-    owners = sorted(
+
+def _get_team_owners(roster_df: pl.DataFrame) -> list[str]:
+    """Get sorted list of team owners."""
+    return sorted(
         [
             str(name)
             for name in roster_df.filter(pl.col("owner_name").is_not_null()).get_column("owner_name").unique().to_list()
@@ -196,11 +188,9 @@ def render_trade_analyzer(user_input: UserInput) -> None:
         key=lambda x: x.lower(),
     )
 
-    if len(owners) < 2:
-        st.error("Need at least 2 teams to analyze trades")
-        return
 
-    # Team selection form
+def _render_team_selection(owners: list[str], current_username: str) -> None:
+    """Render team selection form."""
     with st.form("team_selection"):
         st.subheader("Select Teams")
         col1, col2 = st.columns(2)
@@ -228,253 +218,228 @@ def render_trade_analyzer(user_input: UserInput) -> None:
             st.session_state.analysis_ready = False
             st.rerun()
 
-    # Only show player selection if teams are selected
-    if st.session_state.selected_team_a and st.session_state.selected_team_b:
-        # Get players for each team
-        team_a_players = get_team_players(roster_df, st.session_state.selected_team_a)
-        team_b_players = get_team_players(roster_df, st.session_state.selected_team_b)
 
-        # Player selection form
-        with st.form("player_selection"):
-            st.subheader("Build Trade")
-            col1, col2 = st.columns(2)
+def _render_team_player_selection(
+    team_name: str, team_players: pl.DataFrame, selected_players: list[str], multiselect_key: str
+) -> list[str]:
+    """Render player selection for a single team."""
+    st.markdown(f"### {team_name} Trading Away")
 
-            with col1:
-                st.markdown(f"### {st.session_state.selected_team_a} Trading Away")
+    if len(team_players) > 0:
+        team_options = team_players.select(["full_name", "position", "value"]).to_dicts()
+        team_display = [f"{p['full_name']} ({p['position']}) - {p['value']:,}" for p in team_options]
+        team_names = [p["full_name"] for p in team_options]
 
-                if len(team_a_players) > 0:
-                    team_a_options = team_a_players.select(["full_name", "position", "value"]).to_dicts()
-                    team_a_display = [f"{p['full_name']} ({p['position']}) - {p['value']:,}" for p in team_a_options]
-                    team_a_names = [p["full_name"] for p in team_a_options]
+        return st.multiselect(
+            "Select players to trade away",
+            options=team_names,
+            default=selected_players,
+            format_func=lambda x: next(
+                display for display, name in zip(team_display, team_names, strict=False) if name == x
+            ),
+            key=multiselect_key,
+        )
+    st.info("No players available for this team")
+    return []
 
-                    selected_a_players = st.multiselect(
-                        "Select players to trade away",
-                        options=team_a_names,
-                        default=st.session_state.selected_a_players,
-                        format_func=lambda x: next(
-                            display for display, name in zip(team_a_display, team_a_names, strict=False) if name == x
-                        ),
-                        key="team_a_multiselect",
-                    )
-                else:
-                    selected_a_players = []
-                    st.info("No players available for this team")
 
-            with col2:
-                st.markdown(f"### {st.session_state.selected_team_b} Trading Away")
+def _render_player_selection(roster_df: pl.DataFrame) -> None:
+    """Render player selection form."""
+    # Get players for each team
+    team_a_players = get_team_players(roster_df, st.session_state.selected_team_a)
+    team_b_players = get_team_players(roster_df, st.session_state.selected_team_b)
 
-                if len(team_b_players) > 0:
-                    team_b_options = team_b_players.select(["full_name", "position", "value"]).to_dicts()
-                    team_b_display = [f"{p['full_name']} ({p['position']}) - {p['value']:,}" for p in team_b_options]
-                    team_b_names = [p["full_name"] for p in team_b_options]
+    # Player selection form
+    with st.form("player_selection"):
+        st.subheader("Build Trade")
+        col1, col2 = st.columns(2)
 
-                    selected_b_players = st.multiselect(
-                        "Select players to trade away",
-                        options=team_b_names,
-                        default=st.session_state.selected_b_players,
-                        format_func=lambda x: next(
-                            display for display, name in zip(team_b_display, team_b_names, strict=False) if name == x
-                        ),
-                        key="team_b_multiselect",
-                    )
-                else:
-                    selected_b_players = []
-                    st.info("No players available for this team")
-
-            analyze_submitted = st.form_submit_button("Analyze Trade", type="primary")
-
-            if analyze_submitted:
-                st.session_state.selected_a_players = selected_a_players
-                st.session_state.selected_b_players = selected_b_players
-                st.session_state.analysis_ready = True
-                st.rerun()
-
-        # Show current selections
-        if st.session_state.selected_a_players or st.session_state.selected_b_players:
-            st.subheader("Current Trade")
-            col1, col2 = st.columns(2)
-
-            with col1:
-                if st.session_state.selected_a_players:
-                    st.markdown(f"**{st.session_state.selected_team_a} trading:**")
-                    for player in st.session_state.selected_a_players:
-                        player_data = roster_df.filter(pl.col("full_name") == player).select(["position", "value"])
-                        if len(player_data) > 0:
-                            pos = player_data.get_column("position").to_list()[0]
-                            val = player_data.get_column("value").to_list()[0]
-                            st.write(f"• {player} ({pos}) - {val:,}")
-                else:
-                    st.markdown(f"**{st.session_state.selected_team_a}:** No players selected")
-
-            with col2:
-                if st.session_state.selected_b_players:
-                    st.markdown(f"**{st.session_state.selected_team_b} trading:**")
-                    for player in st.session_state.selected_b_players:
-                        player_data = roster_df.filter(pl.col("full_name") == player).select(["position", "value"])
-                        if len(player_data) > 0:
-                            pos = player_data.get_column("position").to_list()[0]
-                            val = player_data.get_column("value").to_list()[0]
-                            st.write(f"• {player} ({pos}) - {val:,}")
-                else:
-                    st.markdown(f"**{st.session_state.selected_team_b}:** No players selected")
-
-        # Trade Analysis (only show if analysis is ready)
-        if st.session_state.analysis_ready and (
-            st.session_state.selected_a_players or st.session_state.selected_b_players
-        ):
-            st.subheader("Trade Analysis")
-
-            metrics = calculate_trade_metrics(
-                st.session_state.selected_a_players, st.session_state.selected_b_players, roster_df
+        with col1:
+            selected_a_players = _render_team_player_selection(
+                st.session_state.selected_team_a,
+                team_a_players,
+                st.session_state.selected_a_players,
+                "team_a_multiselect",
             )
 
-            # Main trade summary
-            col1, col2, col3, col4 = st.columns(4)
+        with col2:
+            selected_b_players = _render_team_player_selection(
+                st.session_state.selected_team_b,
+                team_b_players,
+                st.session_state.selected_b_players,
+                "team_b_multiselect",
+            )
 
-            with col1:
-                st.metric(
-                    f"{st.session_state.selected_team_a} Gets",
-                    f"{metrics['team_b_total']:,} pts",
-                    delta=f"{metrics['team_b_trend']:+.2f} trend" if metrics["team_b_trend"] != 0 else None,
-                )
+        analyze_submitted = st.form_submit_button("Analyze Trade", type="primary")
 
-            with col2:
-                st.metric(
-                    f"{st.session_state.selected_team_b} Gets",
-                    f"{metrics['team_a_total']:,} pts",
-                    delta=f"{metrics['team_a_trend']:+.2f} trend" if metrics["team_a_trend"] != 0 else None,
-                )
+        if analyze_submitted:
+            st.session_state.selected_a_players = selected_a_players
+            st.session_state.selected_b_players = selected_b_players
+            st.session_state.analysis_ready = True
+            st.rerun()
 
-            with col3:
-                difference = abs(metrics["value_difference"])
-                winner = (
-                    st.session_state.selected_team_a
-                    if metrics["value_difference"] > 0
-                    else st.session_state.selected_team_b
-                )
-                st.metric(
-                    "Value Difference",
-                    f"{difference:,} pts",
-                    delta=f"{winner} wins" if difference > 50 else "Fair trade",
-                )
 
-            with col4:
-                st.metric(
-                    "Fairness Score",
-                    f"{metrics['fairness_score']:.0f}/100",
-                    delta="Excellent"
-                    if metrics["fairness_score"] >= 90
-                    else "Good"
-                    if metrics["fairness_score"] >= 75
-                    else "Needs work",
-                )
+def _render_team_trade_summary(team_name: str, selected_players: list[str], roster_df: pl.DataFrame) -> None:
+    """Render trade summary for a single team."""
+    if selected_players:
+        st.markdown(f"**{team_name} trading:**")
+        for player in selected_players:
+            player_data = roster_df.filter(pl.col("full_name") == player).select(["position", "value"])
+            if len(player_data) > 0:
+                pos = player_data.get_column("position").to_list()[0]
+                val = player_data.get_column("value").to_list()[0]
+                st.write(f"• {player} ({pos}) - {val:,}")
+    else:
+        st.markdown(f"**{team_name}:** No players selected")
 
-            # Visual trade analysis
-            if metrics["team_a_total"] > 0 or metrics["team_b_total"] > 0:
-                # Create trade comparison chart
-                fig = go.Figure()
 
-                fig.add_trace(
-                    go.Bar(
-                        name=f"{st.session_state.selected_team_a} Receives",
-                        x=[st.session_state.selected_team_a],
-                        y=[metrics["team_b_total"]],
-                        marker_color="lightblue",
-                    )
-                )
+def _render_current_trade_summary(roster_df: pl.DataFrame) -> None:
+    """Render current trade summary."""
+    st.subheader("Current Trade")
+    col1, col2 = st.columns(2)
 
-                fig.add_trace(
-                    go.Bar(
-                        name=f"{st.session_state.selected_team_b} Receives",
-                        x=[st.session_state.selected_team_b],
-                        y=[metrics["team_a_total"]],
-                        marker_color="lightcoral",
-                    )
-                )
+    with col1:
+        _render_team_trade_summary(st.session_state.selected_team_a, st.session_state.selected_a_players, roster_df)
 
-                fig.update_layout(
-                    title="Trade Value Comparison", yaxis_title="Total Value", barmode="group", height=400
-                )
+    with col2:
+        _render_team_trade_summary(st.session_state.selected_team_b, st.session_state.selected_b_players, roster_df)
 
-                st.plotly_chart(fig, use_container_width=True)
 
-            # Detailed breakdown
-            col1, col2 = st.columns(2)
+def _render_trade_metrics(metrics: dict) -> None:
+    """Render trade metrics summary."""
+    col1, col2, col3, col4 = st.columns(4)
 
-            with col1:
-                if st.session_state.selected_a_players:
-                    st.markdown(f"#### {st.session_state.selected_team_a} Trading Away:")
-                    trade_away_a = roster_df.filter(pl.col("full_name").is_in(st.session_state.selected_a_players))
-                    st.dataframe(
-                        trade_away_a.select(["full_name", "position", "value", "trend"]),
-                        column_config={
-                            "full_name": st.column_config.Column("Player", width="medium"),
-                            "position": st.column_config.Column("Position", width="small"),
-                            "value": st.column_config.NumberColumn("Value", width="small"),
-                            "trend": st.column_config.NumberColumn(
-                                "Trend", format="%.2f", width="small", help=HELP_TEXT_TREND
-                            ),
-                        },
-                        hide_index=True,
-                        use_container_width=True,
-                    )
+    with col1:
+        st.metric(
+            f"{st.session_state.selected_team_a} Gets",
+            f"{metrics['team_b_total']:,} pts",
+            delta=f"{metrics['team_b_trend']:+.2f} trend" if metrics["team_b_trend"] != 0 else None,
+        )
 
-            with col2:
-                if st.session_state.selected_b_players:
-                    st.markdown(f"#### {st.session_state.selected_team_b} Trading Away:")
-                    trade_away_b = roster_df.filter(pl.col("full_name").is_in(st.session_state.selected_b_players))
-                    st.dataframe(
-                        trade_away_b.select(["full_name", "position", "value", "trend"]),
-                        column_config={
-                            "full_name": st.column_config.Column("Player", width="medium"),
-                            "position": st.column_config.Column("Position", width="small"),
-                            "value": st.column_config.NumberColumn("Value", width="small"),
-                            "trend": st.column_config.NumberColumn(
-                                "Trend", format="%.2f", width="small", help=HELP_TEXT_TREND
-                            ),
-                        },
-                        hide_index=True,
-                        use_container_width=True,
-                    )
+    with col2:
+        st.metric(
+            f"{st.session_state.selected_team_b} Gets",
+            f"{metrics['team_a_total']:,} pts",
+            delta=f"{metrics['team_a_trend']:+.2f} trend" if metrics["team_a_trend"] != 0 else None,
+        )
 
-            # Trade recommendations
-            if abs(metrics["value_difference"]) > 50:
-                st.subheader("💡 Trade Suggestions")
+    with col3:
+        difference = abs(metrics["value_difference"])
+        winner = (
+            st.session_state.selected_team_a if metrics["value_difference"] > 0 else st.session_state.selected_team_b
+        )
+        st.metric(
+            "Value Difference",
+            f"{difference:,} pts",
+            delta=f"{winner} wins" if difference > VALUE_DIFFERENCE_THRESHOLD else "Fair trade",
+        )
 
-                suggestions = suggest_alternatives(
-                    st.session_state.selected_team_a,
-                    st.session_state.selected_team_b,
-                    roster_df,
-                    st.session_state.selected_a_players,
-                    st.session_state.selected_b_players,
-                )
+    with col4:
+        st.metric(
+            "Fairness Score",
+            f"{metrics['fairness_score']:.0f}/100",
+            delta="Excellent"
+            if metrics["fairness_score"] >= EXCELLENT_FAIRNESS_THRESHOLD
+            else "Good"
+            if metrics["fairness_score"] >= GOOD_FAIRNESS_THRESHOLD
+            else "Needs work",
+        )
 
-                if suggestions:
-                    st.markdown("To make this trade more fair, consider:")
 
-                    for i, suggestion in enumerate(suggestions):
-                        with st.expander(
-                            f"Option {i + 1}: {suggestion['type']} (Improves fairness by {abs(metrics['value_difference']) - suggestion['new_difference']:.0f} points)"
-                        ):
-                            col1, col2, col3 = st.columns(3)
-                            with col1:
-                                st.markdown(f"**Player:** {suggestion['player']}")
-                            with col2:
-                                st.markdown(f"**Value:** {suggestion['value']:,}")
-                            with col3:
-                                st.markdown(f"**New Difference:** {suggestion['new_difference']:.0f}")
-                else:
-                    st.info(
-                        "No simple adjustments found to balance this trade. Consider larger changes to the player selection."
-                    )
+def _render_trade_chart(metrics: dict) -> None:
+    """Render trade comparison chart."""
+    if metrics["team_a_total"] > 0 or metrics["team_b_total"] > 0:
+        # Create trade comparison chart
+        fig = go.Figure()
 
-            elif metrics["fairness_score"] >= 75:
-                st.success("✅ This looks like a fair trade! Both teams receive similar value.")
+        fig.add_trace(
+            go.Bar(
+                name=f"{st.session_state.selected_team_a} Receives",
+                x=[st.session_state.selected_team_a],
+                y=[metrics["team_b_total"]],
+                marker_color="lightblue",
+            )
+        )
 
-        elif st.session_state.selected_team_a and st.session_state.selected_team_b:
-            st.info("👆 Select players from both teams and click 'Analyze Trade' to see the analysis")
+        fig.add_trace(
+            go.Bar(
+                name=f"{st.session_state.selected_team_b} Receives",
+                x=[st.session_state.selected_team_b],
+                y=[metrics["team_a_total"]],
+                marker_color="lightcoral",
+            )
+        )
 
-    # Trade tips
+        fig.update_layout(title="Trade Value Comparison", yaxis_title="Total Value", barmode="group", height=400)
+
+        st.plotly_chart(fig, use_container_width=True)
+
+
+def _render_team_breakdown(team_name: str, selected_players: list[str], roster_df: pl.DataFrame) -> None:
+    """Render detailed breakdown for a single team."""
+    if selected_players:
+        st.markdown(f"#### {team_name} Trading Away:")
+        trade_away = roster_df.filter(pl.col("full_name").is_in(selected_players))
+        st.dataframe(
+            trade_away.select(["full_name", "position", "value", "trend"]),
+            column_config={
+                "full_name": st.column_config.Column("Player", width="medium"),
+                "position": st.column_config.Column("Position", width="small"),
+                "value": st.column_config.NumberColumn("Value", width="small"),
+                "trend": st.column_config.NumberColumn("Trend", format="%.2f", width="small", help=HELP_TEXT_TREND),
+            },
+            hide_index=True,
+            use_container_width=True,
+        )
+
+
+def _render_trade_breakdown(roster_df: pl.DataFrame) -> None:
+    """Render detailed trade breakdown."""
+    col1, col2 = st.columns(2)
+
+    with col1:
+        _render_team_breakdown(st.session_state.selected_team_a, st.session_state.selected_a_players, roster_df)
+
+    with col2:
+        _render_team_breakdown(st.session_state.selected_team_b, st.session_state.selected_b_players, roster_df)
+
+
+def _render_trade_recommendations(metrics: dict, roster_df: pl.DataFrame) -> None:
+    """Render trade recommendations."""
+    if abs(metrics["value_difference"]) > VALUE_DIFFERENCE_THRESHOLD:
+        st.subheader("💡 Trade Suggestions")
+
+        suggestions = suggest_alternatives(
+            (st.session_state.selected_team_a, st.session_state.selected_team_b),
+            roster_df,
+            (st.session_state.selected_a_players, st.session_state.selected_b_players),
+        )
+
+        if suggestions:
+            st.markdown("To make this trade more fair, consider:")
+
+            for i, suggestion in enumerate(suggestions):
+                with st.expander(
+                    f"Option {i + 1}: {suggestion['type']} (Improves fairness by {abs(metrics['value_difference']) - suggestion['new_difference']:.0f} points)"
+                ):
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.markdown(f"**Player:** {suggestion['player']}")
+                    with col2:
+                        st.markdown(f"**Value:** {suggestion['value']:,}")
+                    with col3:
+                        st.markdown(f"**New Difference:** {suggestion['new_difference']:.0f}")
+        else:
+            st.info(
+                "No simple adjustments found to balance this trade. Consider larger changes to the player selection."
+            )
+
+    elif metrics["fairness_score"] >= GOOD_FAIRNESS_THRESHOLD:
+        st.success("✅ This looks like a fair trade! Both teams receive similar value.")
+
+
+def _render_trade_tips() -> None:
+    """Render trade analysis tips."""
     with st.expander("💡 Trade Analysis Tips", expanded=False):
         st.markdown("""
         ### How to Use the Trade Analyzer:
@@ -501,8 +466,76 @@ def render_trade_analyzer(user_input: UserInput) -> None:
         """)
 
 
+def render_trade_analyzer(user_input: UserInput) -> None:
+    """
+    Render the trade analyzer interface.
+
+    Args:
+    ----
+        user_input: UserInput object containing all user preferences
+
+    """
+    owner_id, current_username, league, ranking_set, starters_only, include_picks, time_frame = user_input
+
+    # Initialize trade-specific session state
+    init_trade_session_state()
+
+    st.header("🔄 Trade Analyzer")
+    st.markdown("Analyze potential trades between teams in your league")
+
+    # Load data
+    players_df, rankings_df, roster_df = _load_trade_data(user_input)
+
+    # Get team owners
+    owners = _get_team_owners(roster_df)
+
+    if len(owners) < MIN_TEAMS_FOR_TRADE:
+        st.error("Need at least 2 teams to analyze trades")
+        return
+
+    # Team selection
+    _render_team_selection(owners, current_username)
+
+    # Only show player selection if teams are selected
+    if st.session_state.selected_team_a and st.session_state.selected_team_b:
+        # Player selection
+        _render_player_selection(roster_df)
+
+        # Show current selections
+        if st.session_state.selected_a_players or st.session_state.selected_b_players:
+            _render_current_trade_summary(roster_df)
+
+        # Trade Analysis (only show if analysis is ready)
+        if st.session_state.analysis_ready and (
+            st.session_state.selected_a_players or st.session_state.selected_b_players
+        ):
+            st.subheader("Trade Analysis")
+
+            metrics = calculate_trade_metrics(
+                st.session_state.selected_a_players, st.session_state.selected_b_players, roster_df
+            )
+
+            # Main trade summary
+            _render_trade_metrics(metrics)
+
+            # Visual trade analysis
+            _render_trade_chart(metrics)
+
+            # Detailed breakdown
+            _render_trade_breakdown(roster_df)
+
+            # Trade recommendations
+            _render_trade_recommendations(metrics, roster_df)
+
+        elif st.session_state.selected_team_a and st.session_state.selected_team_b:
+            st.info("👆 Select players from both teams and click 'Analyze Trade' to see the analysis")
+
+    # Trade tips
+    _render_trade_tips()
+
+
 def main() -> None:
-    """Main function for the trade analyzer page."""
+    """Run the trade analyzer page."""
     render_home_nav()
 
     user_input = get_user_input()
