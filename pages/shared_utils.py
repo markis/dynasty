@@ -578,7 +578,7 @@ def get_processed_data(user_input: UserInput) -> tuple[pl.DataFrame, pl.DataFram
         .sort("value", descending=True, nulls_last=True)
     )
 
-    if starters_only:
+    if starters_only and "is_starter" in roster_df.columns:
         roster_df = roster_df.filter(pl.col("is_starter"))
 
     return players_df, rankings_df, roster_df

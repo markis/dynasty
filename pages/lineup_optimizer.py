@@ -226,8 +226,13 @@ def _load_optimizer_data(
         return players_df, rankings_df, pl.DataFrame(), pl.DataFrame(), pl.DataFrame()
 
     # Get current starters and bench
-    current_starters = user_roster.filter(pl.col("is_starter"))
-    current_bench = user_roster.filter(~pl.col("is_starter"))
+    if "is_starter" in user_roster.columns:
+        current_starters = user_roster.filter(pl.col("is_starter"))
+        current_bench = user_roster.filter(~pl.col("is_starter"))
+    else:
+        # If no is_starter column, treat all players as bench
+        current_starters = user_roster.filter(pl.lit(value=False))  # Empty dataframe
+        current_bench = user_roster
 
     return players_df, rankings_df, user_roster, current_starters, current_bench
 

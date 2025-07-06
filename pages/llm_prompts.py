@@ -12,7 +12,6 @@ import polars as pl
 import streamlit as st
 
 from pages.shared_utils import (
-    HELP_TEXT_TREND,
     POSITIONS,
     UserInput,
     dump_cookies,
@@ -44,6 +43,26 @@ LEAGUE CONTEXT:
     return context.strip()
 
 
+def _safe_format_value(value: float | None) -> int:
+    """Safely format a value, handling None cases."""
+    if value is None:
+        return 0
+    try:
+        return int(value)
+    except (ValueError, TypeError):
+        return 0
+
+
+def _safe_format_trend(trend: float | None) -> float:
+    """Safely format a trend value, handling None cases."""
+    if trend is None:
+        return 0.0
+    try:
+        return float(trend)
+    except (ValueError, TypeError):
+        return 0.0
+
+
 def get_player_context(roster_df: pl.DataFrame, player_names: list[str]) -> str:
     """Generate player context for specific players."""
     if not player_names:
@@ -51,79 +70,153 @@ def get_player_context(roster_df: pl.DataFrame, player_names: list[str]) -> str:
 
     player_data = roster_df.filter(pl.col("full_name").is_in(player_names))
 
-    context = "\nPLAYER DATA:\n"
-    for row in player_data.iter_rows(named=True):
-        value = row.get("value") or 0
-        owner_status = f"Owned by {row['owner_name']}" if row["owner_name"] else "AVAILABLE FREE AGENT"
-        trend_arrow = (
-            "📈" if row["trend"] > TREND_UP_THRESHOLD else "📉" if row["trend"] < TREND_DOWN_THRESHOLD else "➡️"
+    if player_data.is_empty():
+        return ""
+
+    # Create trend arrows using vectorized operations if trend column exists
+    if "trend" in player_data.columns:
+        trend_arrows = (
+            pl.when(pl.col("trend") > TREND_UP_THRESHOLD)
+            .then(pl.lit("📈"))
+            .when(pl.col("trend") < TREND_DOWN_THRESHOLD)
+            .then(pl.lit("📉"))
+            .otherwise(pl.lit("➡️"))
+            .alias("trend_arrow")
         )
-        context += f"- {row['full_name']} ({row['position']}): Value {value:,}, Trend {row['trend']:.3f} {trend_arrow}, {owner_status}\n"
+    else:
+        trend_arrows = pl.lit("➡️").alias("trend_arrow")
+
+    # Create owner status using vectorized operations if owner_name column exists
+    if "owner_name" in player_data.columns:
+        owner_status = (
+            pl.when(pl.col("owner_name").is_not_null())
+            .then(pl.format("Owned by {}", pl.col("owner_name")))
+            .otherwise(pl.lit("AVAILABLE FREE AGENT"))
+            .alias("owner_status")
+        )
+    else:
+        owner_status = pl.lit("AVAILABLE FREE AGENT").alias("owner_status")
+
+    # Add the computed columns
+    player_data = player_data.with_columns([trend_arrows, owner_status])
+
+    # Format the context string using the compute once approach
+    context = "\nPLAYER DATA:\n"
+    context += "\n".join(
+        [
+            f"- {row['full_name']} ({row.get('position', 'N/A')}): Value {_safe_format_value(row.get('value')):,}, Trend {_safe_format_trend(row.get('trend')):.3f} {row['trend_arrow']}, {row['owner_status']}"
+            for row in player_data.to_dicts()
+        ]
+    )
 
     return context
 
 
 def get_roster_context(roster_df: pl.DataFrame, username: str, *, include_all_teams: bool = False) -> str:
     """Generate roster context for analysis."""
-    context = ""
+    context_parts = []
 
     if include_all_teams:
         # Get all team rosters
-        teams = roster_df.filter(pl.col("owner_name").is_not_null()).get_column("owner_name").unique().to_list()
-        context += "\nALL TEAM ROSTERS:\n"
+        teams_df = roster_df.filter(pl.col("owner_name").is_not_null())
+        teams = teams_df.get_column("owner_name").unique().to_list()
+        context_parts.append("\nALL TEAM ROSTERS:\n")
 
         for team in sorted(teams):
             team_roster = roster_df.filter(pl.col("owner_name") == team).sort("value", descending=True)
             total_value = team_roster.get_column("value").sum()
-            context += f"\n{team} (Total Value: {total_value:,}):\n"
+            context_parts.append(f"\n{team} (Total Value: {total_value:,}):\n")
 
-            for row in team_roster.head(15).iter_rows(named=True):  # Top 15 players per team
-                value = row.get("value") or 0
-                starter_status = " [STARTER]" if row.get("is_starter") else ""
-                context += f"  - {row['full_name']} ({row['position']}): {value:,}{starter_status}\n"
+            # Process top 15 players per team
+            top_players = team_roster.head(15)
+
+            # Add starter status column if is_starter column exists
+            if "is_starter" in top_players.columns:
+                starter_status = (
+                    pl.when(pl.col("is_starter")).then(pl.lit(" [STARTER]")).otherwise(pl.lit("")).alias("starter_text")
+                )
+                top_players = top_players.with_columns(starter_status)
+            else:
+                top_players = top_players.with_columns(pl.lit("").alias("starter_text"))
+
+            team_entries = [
+                f"  - {row['full_name']} ({row['position']}): {_safe_format_value(row.get('value')):,}{row['starter_text']}"
+                for row in top_players.to_dicts()
+            ]
+            context_parts.append("\n".join(team_entries))
     else:
         # Just user's roster
         user_roster = roster_df.filter(pl.col("owner_name") == username).sort("value", descending=True)
-        if len(user_roster) > 0:
+        if not user_roster.is_empty():
             total_value = user_roster.get_column("value").sum()
-            context += f"\nMY ROSTER ({username}) - Total Value: {total_value:,}:\n"
+            context_parts.append(f"\nMY ROSTER ({username}) - Total Value: {total_value:,}:\n")
 
-            for row in user_roster.iter_rows(named=True):
-                value = row.get("value") or 0
-                starter_status = "STARTER" if row.get("is_starter") else "BENCH"
-                context += f"- {row['full_name']} ({row['position']}): {value:,}, {starter_status}\n"
+            # Create status column using vectorized operations
+            if "is_starter" in user_roster.columns:
+                user_roster = user_roster.with_columns(
+                    pl.when(pl.col("is_starter")).then(pl.lit("STARTER")).otherwise(pl.lit("BENCH")).alias("status")
+                )
+            else:
+                user_roster = user_roster.with_columns(pl.lit("BENCH").alias("status"))
 
-    return context
+            roster_entries = [
+                f"- {row['full_name']} ({row['position']}): {_safe_format_value(row.get('value')):,}, {row['status']}"
+                for row in user_roster.to_dicts()
+            ]
+            context_parts.append("\n".join(roster_entries))
+
+    return "".join(context_parts)
 
 
 def get_league_ownership_summary(roster_df: pl.DataFrame) -> str:
     """Generate a summary of league ownership by team."""
-    teams = roster_df.filter(pl.col("owner_name").is_not_null()).get_column("owner_name").unique().to_list()
+    # Get only rows with owners and unique team names
+    teams_df = roster_df.filter(pl.col("owner_name").is_not_null())
+    if teams_df.is_empty():
+        return "\nLEAGUE OWNERSHIP SUMMARY:\nNo teams found.\n\n"
 
-    context = "\nLEAGUE OWNERSHIP SUMMARY:\n"
+    teams = teams_df.get_column("owner_name").unique().to_list()
+
+    # Process all teams at once using group_by operations
+    team_summary = (
+        roster_df.filter(pl.col("owner_name").is_not_null() & pl.col("value").is_not_null())
+        .group_by("owner_name")
+        .agg(
+            [
+                pl.len().alias("player_count"),
+                pl.col("value").sum().alias("total_value"),
+                pl.struct(pl.col("full_name"), pl.col("value"))
+                .sort_by("value", descending=True)
+                .first()
+                .alias("top_player"),
+            ]
+        )
+    )
+
+    # Generate the summary text
+    summary_parts = ["\nLEAGUE OWNERSHIP SUMMARY:\n"]
+
     for team in sorted(teams):
-        team_roster = roster_df.filter(pl.col("owner_name") == team, pl.col("value").is_not_null())
+        team_data = team_summary.filter(pl.col("owner_name") == team)
 
-        if len(team_roster) > 0:
-            total_value = team_roster.get_column("value").sum()
-            player_count = len(team_roster)
+        if not team_data.is_empty():
+            row = team_data.row(0, named=True)
+            player_count = row["player_count"]
+            total_value = row["total_value"] if row["total_value"] is not None else 0
 
-            # Get top player (with valid value)
-            top_player = team_roster.sort("value", descending=True).head(1)
-            top_name = top_player.get_column("full_name").to_list()[0]
-            top_value = top_player.get_column("value").to_list()[0]
-
-            # Ensure values are not None before formatting
-            total_value = total_value if total_value is not None else 0
-            top_value = top_value if top_value is not None else 0
-
-            context += (
-                f"- {team}: {player_count} players, {total_value:,} total value (Top: {top_name} {top_value:,})\n"
-            )
+            if player_count > 0 and row["top_player"] is not None:
+                top_name = row["top_player"]["full_name"]
+                top_value = _safe_format_value(row["top_player"]["value"])
+                summary_parts.append(
+                    f"- {team}: {player_count} players, {total_value:,} total value (Top: {top_name} {top_value:,})\n"
+                )
+            else:
+                summary_parts.append(f"- {team}: No players with values\n")
         else:
-            context += f"- {team}: No players with values\n"
+            summary_parts.append(f"- {team}: No players with values\n")
 
-    return context + "\n"
+    summary_parts.append("\n")
+    return "".join(summary_parts)
 
 
 def get_free_agents_context(roster_df: pl.DataFrame, position: str | None = None, top_n: int = 20) -> str:
@@ -175,19 +268,30 @@ TRADE DETAILS:
     base_prompt += get_league_context(user_input)
     base_prompt += get_player_context(roster_df, my_players + their_players)
     base_prompt += get_roster_context(roster_df, user_input.owner_name)
+
+    # Add trading partner's roster context for better analysis
+    if their_team:
+        base_prompt += f"\nTRADING PARTNER'S ROSTER ({their_team}):\n"
+        partner_roster_context = get_roster_context(roster_df, their_team)
+        # Remove the header from partner context since we're adding our own
+        partner_roster_clean = partner_roster_context.replace(f"\nMY ROSTER ({their_team}) - Total Value:", "\nTotal Value:")
+        base_prompt += partner_roster_clean
+
     base_prompt += get_league_ownership_summary(roster_df)
     base_prompt += get_free_agents_context(roster_df, None, 15)  # Top 15 free agents for context
 
     base_prompt += """
 
-Please analyze:
+Please analyze this trade considering both teams' rosters:
 1. Value fairness - who wins/loses on paper?
-2. Positional fit - does this address roster needs?
-3. Trend analysis - who has better trajectory?
-4. Risk assessment - injury, age, situation concerns?
-5. Strategic timing - good time for this trade?
-6. Counter-offer suggestions if needed
-7. Overall recommendation: Accept, Decline, or Counter?
+2. Positional fit - does this address both teams' roster needs and weaknesses?
+3. Team composition impact - how does this trade affect each team's depth and balance?
+4. Trend analysis - who has better trajectory and why?
+5. Risk assessment - injury, age, situation concerns for both sides?
+6. Strategic timing - is this good timing for both teams' competitive windows?
+7. Alternative players - are there better fits available from either roster?
+8. Counter-offer suggestions - what adjustments would make this more balanced?
+9. Overall recommendation: Accept, Decline, or Counter? Explain reasoning.
 """
 
     return base_prompt
@@ -238,19 +342,26 @@ def generate_lineup_optimization_prompt(user_input: UserInput, roster_df: pl.Dat
 
     # Get current starters vs bench
     user_roster = roster_df.filter(pl.col("owner_name") == user_input.owner_name)
-    starters = user_roster.filter(pl.col("is_starter"))
-    bench = user_roster.filter(~pl.col("is_starter"))
+
+    # Check if is_starter column exists
+    if "is_starter" in user_roster.columns:
+        starters = user_roster.filter(pl.col("is_starter"))
+        bench = user_roster.filter(~pl.col("is_starter"))
+    else:
+        # If no is_starter column, treat all players as bench
+        starters = user_roster.filter(pl.lit(value=False))  # Empty dataframe
+        bench = user_roster
 
     if len(starters) > 0:
         base_prompt += "\nCURRENT STARTERS:\n"
         for row in starters.iter_rows(named=True):
-            value = row.get("value") or 0
+            value = _safe_format_value(row.get("value"))
             base_prompt += f"- {row['full_name']} ({row['position']}): {value:,}\n"
 
     if len(bench) > 0:
         base_prompt += "\nBENCH PLAYERS:\n"
         for row in bench.iter_rows(named=True):
-            value = row.get("value") or 0
+            value = _safe_format_value(row.get("value"))
             base_prompt += f"- {row['full_name']} ({row['position']}): {value:,}\n"
 
     base_prompt += """
@@ -285,7 +396,7 @@ def generate_draft_strategy_prompt(user_input: UserInput, roster_df: pl.DataFram
     for position in POSITIONS:
         position_players = user_roster.filter(pl.col("position") == position)
         count = len(position_players)
-        total_value = position_players.get_column("value").sum() if count > 0 else 0
+        total_value = _safe_format_value(position_players.get_column("value").sum() if count > 0 else 0)
         base_prompt += f"- {position}: {count} players, {total_value:,} total value\n"
 
     base_prompt += """
@@ -439,21 +550,106 @@ def _render_trade_analysis_prompt(user_input: UserInput, roster_df: pl.DataFrame
     """Render the trade analysis prompt interface."""
     st.subheader("🔄 Trade Analysis Setup")
 
+    # Get available teams and initialize session state
+    other_teams = _get_other_teams(roster_df, current_username)
+    _initialize_trade_session_state(other_teams)
+
+    # Render player selection interface
+    trading_partner, my_players, their_players = _render_player_selection(roster_df, current_username, other_teams)
+
+    # Show current trade summary
+    _render_trade_summary(my_players, their_players)
+
+    # Render action buttons
+    _render_trade_action_buttons(user_input, roster_df, my_players, their_players, trading_partner)
+
+
+def _initialize_trade_session_state(other_teams: list[str]) -> None:
+    """Initialize session state for trade analysis."""
+    if "trade_partner" not in st.session_state:
+        st.session_state.trade_partner = other_teams[0] if other_teams else ""
+    if "my_players" not in st.session_state:
+        st.session_state.my_players = []
+    if "their_players" not in st.session_state:
+        st.session_state.their_players = []
+
+
+def _render_player_selection(roster_df: pl.DataFrame, current_username: str, other_teams: list[str]) -> tuple[str, list[str], list[str]]:
+    """Render player selection interface and return selections."""
     col1, col2 = st.columns(2)
 
-    # Get available teams
-    other_teams = _get_other_teams(roster_df, current_username)
-
     with col1:
-        trading_partner = st.selectbox("Trading Partner", other_teams)
+        # Trading partner selection
+        trading_partner = st.selectbox(
+            "Trading Partner",
+            options=other_teams,
+            index=other_teams.index(st.session_state.trade_partner) if st.session_state.trade_partner in other_teams else 0,
+            key="trade_partner_select"
+        )
+
+        # Update session state if partner changed
+        if trading_partner != st.session_state.trade_partner:
+            st.session_state.trade_partner = trading_partner
+            st.session_state.their_players = []  # Reset their players when partner changes
+
+        # My players selection
         my_players = _get_my_players_selection(roster_df, current_username)
 
     with col2:
-        their_players = _get_their_players_selection(roster_df, trading_partner) if trading_partner else []
+        # Their players selection (only if trading partner is selected)
+        if trading_partner:
+            their_players = _get_their_players_selection(roster_df, trading_partner)
+        else:
+            their_players = []
+            st.info("Select a trading partner to choose their players")
 
-    if st.button("Generate Trade Analysis Prompt", type="primary"):
-        prompt = generate_trade_analysis_prompt(user_input, roster_df, my_players, their_players, trading_partner)
-        _display_generated_prompt(prompt, "trade_prompt")
+    return trading_partner, my_players, their_players
+
+
+def _render_trade_summary(my_players: list[str], their_players: list[str]) -> None:
+    """Render the current trade summary."""
+    if not my_players and not their_players:
+        return
+
+    st.markdown("### 📋 Current Trade Summary")
+    col_summary1, col_summary2 = st.columns(2)
+
+    with col_summary1:
+        if my_players:
+            st.markdown(f"**📤 Trading Away ({len(my_players)} players):**")
+            for player in my_players:
+                st.markdown(f"- {player}")
+        else:
+            st.markdown("**📤 Trading Away:** *No players selected*")
+
+    with col_summary2:
+        if their_players:
+            st.markdown(f"**📥 Receiving ({len(their_players)} players):**")
+            for player in their_players:
+                st.markdown(f"- {player}")
+        else:
+            st.markdown("**📥 Receiving:** *No players selected*")
+
+
+def _render_trade_action_buttons(
+    user_input: UserInput, roster_df: pl.DataFrame, my_players: list[str], their_players: list[str], trading_partner: str
+) -> None:
+    """Render trade action buttons."""
+    col_btn1, col_btn2, col_btn3 = st.columns([1, 1, 2])
+
+    with col_btn1:
+        if st.button("🔄 Reset Selections", key="reset_trade_selections"):
+            st.session_state.my_players = []
+            st.session_state.their_players = []
+            st.rerun()
+
+    with col_btn2:
+        if st.button("Generate Trade Analysis Prompt", type="primary", key="generate_trade_prompt"):
+            if not my_players and not their_players:
+                st.warning("Please select at least one player from either side of the trade.")
+            else:
+                prompt = generate_trade_analysis_prompt(user_input, roster_df, my_players, their_players, trading_partner)
+                _display_generated_prompt(prompt, "trade_prompt")
 
 
 def _render_waiver_wire_prompt(user_input: UserInput, roster_df: pl.DataFrame, current_username: str) -> None:
@@ -463,12 +659,12 @@ def _render_waiver_wire_prompt(user_input: UserInput, roster_df: pl.DataFrame, c
     col1, col2 = st.columns(2)
 
     with col1:
-        position_filter = st.selectbox("Position Focus", ["All", *list(POSITIONS)])
+        position_filter = st.selectbox("Position Focus", ["All", *list(POSITIONS)], key="waiver_position_filter")
 
     with col2:
         drop_player = _get_drop_candidate_selection(roster_df, current_username)
 
-    if st.button("Generate Waiver Wire Prompt", type="primary"):
+    if st.button("Generate Waiver Wire Prompt", type="primary", key="generate_waiver_prompt"):
         prompt = generate_waiver_pickup_prompt(user_input, roster_df, position_filter, drop_player)
         _display_generated_prompt(prompt, "waiver_prompt")
 
@@ -480,14 +676,14 @@ def _render_draft_decision_prompt(user_input: UserInput, roster_df: pl.DataFrame
     col1, col2 = st.columns(2)
 
     with col1:
-        draft_position = st.text_input("Current Draft Position (optional)", placeholder="e.g., Round 3, Pick 7")
+        draft_position = st.text_input("Current Draft Position (optional)", placeholder="e.g., Round 3, Pick 7", key="draft_position_input")
 
     with col2:
         position_focus = st.multiselect(
-            "Positions to Consider", list(POSITIONS), help="Leave empty to consider all positions"
+            "Positions to Consider", list(POSITIONS), help="Leave empty to consider all positions", key="draft_position_focus"
         )
 
-    if st.button("Generate Draft Decision Prompt", type="primary"):
+    if st.button("Generate Draft Decision Prompt", type="primary", key="generate_draft_prompt"):
         available_positions = position_focus if position_focus else None
         prompt = generate_who_to_draft_next_prompt(user_input, roster_df, draft_position or None, available_positions)
         _display_generated_prompt(prompt, "draft_decision_prompt")
@@ -498,7 +694,7 @@ def _render_lineup_optimization_prompt(user_input: UserInput, roster_df: pl.Data
     st.subheader("🎯 Lineup Optimization")
     st.markdown("This prompt will analyze your current lineup and provide start/sit recommendations.")
 
-    if st.button("Generate Lineup Optimization Prompt", type="primary"):
+    if st.button("Generate Lineup Optimization Prompt", type="primary", key="generate_lineup_prompt"):
         prompt = generate_lineup_optimization_prompt(user_input, roster_df)
         _display_generated_prompt(prompt, "lineup_prompt")
 
@@ -508,9 +704,9 @@ def _render_draft_strategy_prompt(user_input: UserInput, roster_df: pl.DataFrame
     st.subheader("🎯 Draft Strategy")
     st.markdown("This prompt will analyze your roster and provide draft strategy recommendations.")
 
-    if st.button("Generate Draft Strategy Prompt", type="primary"):
+    if st.button("Generate Draft Strategy Prompt", type="primary", key="generate_draft_strategy_prompt"):
         prompt = generate_draft_strategy_prompt(user_input, roster_df)
-        _display_generated_prompt(prompt, "draft_prompt")
+        _display_generated_prompt(prompt, "draft_strategy_prompt")
 
 
 def _render_season_strategy_prompt(user_input: UserInput, roster_df: pl.DataFrame) -> None:
@@ -519,9 +715,9 @@ def _render_season_strategy_prompt(user_input: UserInput, roster_df: pl.DataFram
     st.markdown("This prompt will provide comprehensive season-long strategic analysis including all team rosters.")
     st.warning("⚠️ This prompt includes all team rosters and will be quite long.")
 
-    if st.button("Generate Season Strategy Prompt", type="primary"):
+    if st.button("Generate Season Strategy Prompt", type="primary", key="generate_season_strategy_prompt"):
         prompt = generate_season_strategy_prompt(user_input, roster_df)
-        _display_generated_prompt(prompt, "season_prompt")
+        _display_generated_prompt(prompt, "season_strategy_prompt")
 
 
 def _get_other_teams(roster_df: pl.DataFrame, current_username: str) -> list[str]:
@@ -538,22 +734,52 @@ def _get_other_teams(roster_df: pl.DataFrame, current_username: str) -> list[str
 def _get_my_players_selection(roster_df: pl.DataFrame, current_username: str) -> list[str]:
     """Get my players selection for trade analysis."""
     my_roster = roster_df.filter(pl.col("owner_name") == current_username)
-    my_player_options = my_roster.get_column("full_name").to_list()
-    return st.multiselect("My Players (trading away)", my_player_options)
+    my_player_options = sorted(my_roster.get_column("full_name").to_list())
+
+    # Filter session state to only include players available in current league
+    current_selections = st.session_state.my_players if hasattr(st.session_state, "my_players") else []
+    valid_selections = [p for p in current_selections if p in my_player_options]
+
+    # Use session state to maintain selections
+    selected = st.multiselect(
+        "My Players (trading away)",
+        options=my_player_options,
+        default=valid_selections,
+        key="my_players_select"
+    )
+
+    # Update session state
+    st.session_state.my_players = selected
+    return selected
 
 
 def _get_their_players_selection(roster_df: pl.DataFrame, trading_partner: str) -> list[str]:
     """Get their players selection for trade analysis."""
     their_roster = roster_df.filter(pl.col("owner_name") == trading_partner)
-    their_player_options = their_roster.get_column("full_name").to_list()
-    return st.multiselect("Their Players (receiving)", their_player_options)
+    their_player_options = sorted(their_roster.get_column("full_name").to_list())
+
+    # Filter session state to only include players available for this partner
+    current_selections = st.session_state.their_players if hasattr(st.session_state, "their_players") else []
+    valid_selections = [p for p in current_selections if p in their_player_options]
+
+    # Use session state to maintain selections
+    selected = st.multiselect(
+        f"Their Players (receiving from {trading_partner})",
+        options=their_player_options,
+        default=valid_selections,
+        key="their_players_select"
+    )
+
+    # Update session state
+    st.session_state.their_players = selected
+    return selected
 
 
 def _get_drop_candidate_selection(roster_df: pl.DataFrame, current_username: str) -> str | None:
     """Get drop candidate selection for waiver wire."""
     my_roster = roster_df.filter(pl.col("owner_name") == current_username)
-    drop_options = ["None", *my_roster.sort("value").get_column("full_name").to_list()]
-    drop_candidate = st.selectbox("Potential Drop Candidate", drop_options)
+    drop_options = ["None", *sorted(my_roster.get_column("full_name").to_list())]
+    drop_candidate = st.selectbox("Potential Drop Candidate", drop_options, key="drop_candidate_select")
     return drop_candidate if drop_candidate != "None" else None
 
 
@@ -626,15 +852,25 @@ def _render_usage_tips() -> None:
         TRADE DETAILS:
         I'm trading away: Ja'Marr Chase, 2024 1st
         I'm receiving: Josh Allen, D'Andre Swift
+        Trading partner: TheirTeam
 
         PLAYER DATA:
         - Ja'Marr Chase (WR): Value 4,850, Trend 0.125 📈, Owned by MyTeam
         - Josh Allen (QB): Value 3,200, Trend -0.050 📉, Owned by TheirTeam
         - D'Andre Swift (RB): Value 2,100, Trend 0.075 📈, Owned by TheirTeam
 
-        MY ROSTER:
+        MY ROSTER (MyTeam) - Total Value: 32,450:
         - Christian McCaffrey (RB): 4,200, STARTER
         - Ja'Marr Chase (WR): 4,850, STARTER
+        - Dak Prescott (QB): 2,100, BENCH
+        ...
+
+        TRADING PARTNER'S ROSTER (TheirTeam):
+        Total Value: 28,900:
+        - Josh Allen (QB): 3,200, STARTER
+        - D'Andre Swift (RB): 2,100, STARTER
+        - Mike Evans (WR): 2,800, STARTER
+        - Kyle Pitts (TE): 1,900, BENCH
         ...
 
         LEAGUE OWNERSHIP SUMMARY:
