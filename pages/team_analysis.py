@@ -170,6 +170,8 @@ def main() -> None:
     else:
         st.info("Please enter your Sleeper username in the sidebar to get started.")
 
+    dump_cookies()
+
 
 if __name__ == "__main__":
     main()
