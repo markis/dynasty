@@ -18,6 +18,7 @@ from pages.shared_utils import (
     get_rosters_df,
     get_user_input,
     render_home_nav,
+    dump_cookies,
 )
 
 st.set_page_config("IR Stash", ":hospital:", layout="wide")
