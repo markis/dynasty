@@ -477,6 +477,160 @@ Please provide:
     return base_prompt
 
 
+def generate_keeper_cut_analysis_prompt(user_input: UserInput, roster_df: pl.DataFrame, cut_count: int = 5) -> str:
+    """Generate a keeper/cut analysis prompt."""
+    base_prompt = f"""I need help deciding which players to keep vs cut in my dynasty fantasy football league. Please analyze my roster and recommend which {cut_count} players to cut.
+
+"""
+
+    # Add contexts
+    base_prompt += get_league_context(user_input)
+    base_prompt += get_roster_context(roster_df, user_input.owner_name)
+    base_prompt += get_free_agents_context(roster_df, None, 15)  # Available alternatives
+
+    # Add age/contract info if available
+    user_roster = roster_df.filter(pl.col("owner_name") == user_input.owner_name).sort("value", descending=False)
+
+    base_prompt += f"""
+Please provide:
+1. Bottom {cut_count} cut candidates with reasoning
+2. Dynasty value assessment for each player
+3. Age curve and future outlook considerations
+4. Replacement value available on waivers
+5. Opportunity cost analysis
+6. Keep/cut recommendations for each borderline player
+7. Alternative roster construction strategies
+"""
+
+    return base_prompt
+
+
+def generate_playoff_push_prompt(user_input: UserInput, roster_df: pl.DataFrame, weeks_remaining: int = 6) -> str:
+    """Generate a playoff push strategy prompt."""
+    base_prompt = f"""I need help with a playoff push strategy. With {weeks_remaining} weeks remaining in the regular season, please analyze my team's position and recommend actions to secure a playoff spot.
+
+"""
+
+    # Add contexts
+    base_prompt += get_league_context(user_input)
+    base_prompt += get_roster_context(roster_df, user_input.owner_name)
+    base_prompt += get_league_ownership_summary(roster_df)
+    base_prompt += get_free_agents_context(roster_df, None, 20)
+
+    base_prompt += f"""
+Please provide:
+1. Playoff chances assessment based on current roster
+2. Must-win vs nice-to-have game identification
+3. Short-term roster moves to maximize wins
+4. Trade targets for immediate impact
+5. Waiver wire priorities for playoff push
+6. Lineup optimization for each remaining week
+7. Risk tolerance - how aggressive should I be?
+8. Backup plan if playoff push fails
+"""
+
+    return base_prompt
+
+
+def generate_rookie_evaluation_prompt(user_input: UserInput, roster_df: pl.DataFrame, rookie_names: list[str]) -> str:
+    """Generate a rookie evaluation prompt."""
+    base_prompt = """I need help evaluating rookie players for dynasty value. Please analyze these rookies and provide dynasty outlook and recommendations.
+
+"""
+
+    # Add contexts
+    base_prompt += get_league_context(user_input)
+    base_prompt += get_player_context(roster_df, rookie_names)
+    base_prompt += get_roster_context(roster_df, user_input.owner_name)
+
+    base_prompt += """
+Please provide:
+1. Dynasty outlook for each rookie (2-3 year projection)
+2. Current vs future value assessment
+3. Opportunity analysis (depth chart, situation)
+4. Buy/sell/hold recommendations
+5. Fair trade value in dynasty context
+6. Comparison to similar rookie profiles historically
+7. Red flags or concerns to monitor
+8. Timeline for expected breakout or decline
+"""
+
+    return base_prompt
+
+
+def generate_buy_low_sell_high_prompt(user_input: UserInput, roster_df: pl.DataFrame) -> str:
+    """Generate a buy low/sell high analysis prompt."""
+    base_prompt = """I need help identifying buy low and sell high opportunities in my league. Please analyze player values and trends to find trading opportunities.
+
+"""
+
+    # Add contexts
+    base_prompt += get_league_context(user_input)
+    base_prompt += get_roster_context(roster_df, user_input.owner_name)
+    base_prompt += get_league_ownership_summary(roster_df)
+
+    # Get trending players
+    if "trend" in roster_df.columns:
+        trending_up = roster_df.filter(pl.col("trend") > TREND_UP_THRESHOLD).sort("trend", descending=True).head(10)
+        trending_down = roster_df.filter(pl.col("trend") < TREND_DOWN_THRESHOLD).sort("trend").head(10)
+
+        if len(trending_up) > 0:
+            base_prompt += "\nTRENDING UP PLAYERS:\n"
+            for row in trending_up.iter_rows(named=True):
+                owner = row.get("owner_name", "Available")
+                value = _safe_format_value(row.get("value"))
+                trend = _safe_format_trend(row.get("trend"))
+                base_prompt += f"- {row['full_name']} ({row['position']}): Value {value:,}, Trend +{trend:.3f}, Owner: {owner}\n"
+
+        if len(trending_down) > 0:
+            base_prompt += "\nTRENDING DOWN PLAYERS:\n"
+            for row in trending_down.iter_rows(named=True):
+                owner = row.get("owner_name", "Available")
+                value = _safe_format_value(row.get("value"))
+                trend = _safe_format_trend(row.get("trend"))
+                base_prompt += f"- {row['full_name']} ({row['position']}): Value {value:,}, Trend {trend:.3f}, Owner: {owner}\n"
+
+    base_prompt += """
+Please provide:
+1. Top 5 buy low candidates with rationale
+2. Top 5 sell high candidates from my roster
+3. Market inefficiencies to exploit
+4. Timing considerations for each move
+5. Fair value ranges for buy/sell targets
+6. Risk assessment for each recommendation
+7. Alternative players with similar value profiles
+"""
+
+    return base_prompt
+
+
+def generate_injury_impact_prompt(user_input: UserInput, roster_df: pl.DataFrame, injured_players: list[str]) -> str:
+    """Generate an injury impact analysis prompt."""
+    base_prompt = """I need help analyzing the impact of player injuries on my team and league. Please provide strategic recommendations for dealing with these injuries.
+
+"""
+
+    # Add contexts
+    base_prompt += get_league_context(user_input)
+    base_prompt += get_player_context(roster_df, injured_players)
+    base_prompt += get_roster_context(roster_df, user_input.owner_name)
+    base_prompt += get_free_agents_context(roster_df, None, 25)
+
+    base_prompt += """
+Please provide:
+1. Injury severity and timeline assessment
+2. Immediate replacement options (waivers/trades)
+3. Long-term roster impact analysis
+4. Handcuff pickups to prioritize
+5. Trade opportunities created by injuries
+6. Buy low opportunities on injured players
+7. Lineup adjustments for affected weeks
+8. Dynasty implications of each injury
+"""
+
+    return base_prompt
+
+
 def render_llm_prompts(user_input: UserInput) -> None:
     """
     Render the LLM prompt generator interface.
@@ -524,6 +678,11 @@ def _render_prompt_type_selection() -> str:
         "Lineup Optimization",
         "Draft Strategy",
         "Season Strategy",
+        "Keeper/Cut Analysis",
+        "Playoff Push Strategy",
+        "Rookie Evaluation",
+        "Buy Low/Sell High",
+        "Injury Impact Analysis",
     ]
     return st.selectbox("Select Prompt Type", prompt_types)
 
@@ -544,6 +703,16 @@ def _handle_prompt_generation(
         _render_draft_strategy_prompt(user_input, roster_df)
     elif selected_prompt == "Season Strategy":
         _render_season_strategy_prompt(user_input, roster_df)
+    elif selected_prompt == "Keeper/Cut Analysis":
+        _render_keeper_cut_prompt(user_input, roster_df)
+    elif selected_prompt == "Playoff Push Strategy":
+        _render_playoff_push_prompt(user_input, roster_df)
+    elif selected_prompt == "Rookie Evaluation":
+        _render_rookie_evaluation_prompt(user_input, roster_df)
+    elif selected_prompt == "Buy Low/Sell High":
+        _render_buy_low_sell_high_prompt(user_input, roster_df)
+    elif selected_prompt == "Injury Impact Analysis":
+        _render_injury_impact_prompt(user_input, roster_df)
 
 
 def _render_trade_analysis_prompt(user_input: UserInput, roster_df: pl.DataFrame, current_username: str) -> None:
@@ -720,6 +889,86 @@ def _render_season_strategy_prompt(user_input: UserInput, roster_df: pl.DataFram
         _display_generated_prompt(prompt, "season_strategy_prompt")
 
 
+def _render_keeper_cut_prompt(user_input: UserInput, roster_df: pl.DataFrame) -> None:
+    """Render the keeper/cut analysis prompt interface."""
+    st.subheader("✂️ Keeper/Cut Analysis")
+    st.markdown("This prompt will help you decide which players to keep vs cut in dynasty.")
+
+    cut_count = st.number_input("Number of players to cut", min_value=1, max_value=20, value=5, key="cut_count_input")
+
+    if st.button("Generate Keeper/Cut Analysis Prompt", type="primary", key="generate_keeper_cut_prompt"):
+        prompt = generate_keeper_cut_analysis_prompt(user_input, roster_df, cut_count)
+        _display_generated_prompt(prompt, "keeper_cut_prompt")
+
+
+def _render_playoff_push_prompt(user_input: UserInput, roster_df: pl.DataFrame) -> None:
+    """Render the playoff push strategy prompt interface."""
+    st.subheader("🏆 Playoff Push Strategy")
+    st.markdown("This prompt will help you strategize for making the playoffs.")
+
+    weeks_remaining = st.number_input("Weeks remaining in regular season", min_value=1, max_value=17, value=6, key="weeks_remaining_input")
+
+    if st.button("Generate Playoff Push Prompt", type="primary", key="generate_playoff_push_prompt"):
+        prompt = generate_playoff_push_prompt(user_input, roster_df, weeks_remaining)
+        _display_generated_prompt(prompt, "playoff_push_prompt")
+
+
+def _render_rookie_evaluation_prompt(user_input: UserInput, roster_df: pl.DataFrame) -> None:
+    """Render the rookie evaluation prompt interface."""
+    st.subheader("👶 Rookie Evaluation")
+    st.markdown("This prompt will help you evaluate rookie players for dynasty value.")
+
+    # Get all players for selection
+    all_players = sorted(roster_df.get_column("full_name").unique().to_list())
+    
+    rookie_players = st.multiselect(
+        "Select rookie players to evaluate",
+        options=all_players,
+        help="Select one or more rookie players for analysis",
+        key="rookie_players_select"
+    )
+
+    if st.button("Generate Rookie Evaluation Prompt", type="primary", key="generate_rookie_evaluation_prompt"):
+        if not rookie_players:
+            st.warning("Please select at least one rookie player to evaluate.")
+        else:
+            prompt = generate_rookie_evaluation_prompt(user_input, roster_df, rookie_players)
+            _display_generated_prompt(prompt, "rookie_evaluation_prompt")
+
+
+def _render_buy_low_sell_high_prompt(user_input: UserInput, roster_df: pl.DataFrame) -> None:
+    """Render the buy low/sell high prompt interface."""
+    st.subheader("📈📉 Buy Low/Sell High Analysis")
+    st.markdown("This prompt will identify trading opportunities based on player value trends.")
+
+    if st.button("Generate Buy Low/Sell High Prompt", type="primary", key="generate_buy_low_sell_high_prompt"):
+        prompt = generate_buy_low_sell_high_prompt(user_input, roster_df)
+        _display_generated_prompt(prompt, "buy_low_sell_high_prompt")
+
+
+def _render_injury_impact_prompt(user_input: UserInput, roster_df: pl.DataFrame) -> None:
+    """Render the injury impact analysis prompt interface."""
+    st.subheader("🏥 Injury Impact Analysis")
+    st.markdown("This prompt will help you analyze the impact of player injuries on your team.")
+
+    # Get all players for selection
+    all_players = sorted(roster_df.get_column("full_name").unique().to_list())
+    
+    injured_players = st.multiselect(
+        "Select injured players to analyze",
+        options=all_players,
+        help="Select one or more injured players for impact analysis",
+        key="injured_players_select"
+    )
+
+    if st.button("Generate Injury Impact Prompt", type="primary", key="generate_injury_impact_prompt"):
+        if not injured_players:
+            st.warning("Please select at least one injured player to analyze.")
+        else:
+            prompt = generate_injury_impact_prompt(user_input, roster_df, injured_players)
+            _display_generated_prompt(prompt, "injury_impact_prompt")
+
+
 def _get_other_teams(roster_df: pl.DataFrame, current_username: str) -> list[str]:
     """Get list of other team names for trading."""
     return sorted(
@@ -811,6 +1060,11 @@ def _render_usage_tips() -> None:
         - **Lineup Optimization** - Start/sit decisions with reasoning
         - **Draft Strategy** - Overall draft planning and roster building
         - **Season Strategy** - Comprehensive team analysis and planning
+        - **Keeper/Cut Analysis** - Dynasty roster management decisions
+        - **Playoff Push Strategy** - Mid-season moves to secure playoffs
+        - **Rookie Evaluation** - Dynasty value assessment for rookies
+        - **Buy Low/Sell High** - Identify trading opportunities based on trends
+        - **Injury Impact Analysis** - Strategic response to player injuries
 
         **📋 Copy & Paste Instructions:**
         1. Click "Generate [Prompt Type] Prompt"
@@ -912,14 +1166,20 @@ def _render_usage_tips() -> None:
         ...
         ```
 
-        ### Sample Waiver Wire Prompt:
+        ### Sample Keeper/Cut Analysis Prompt:
         ```
-        I need help with waiver wire pickups...
+        I need help deciding which players to keep vs cut...
 
-        TOP AVAILABLE FREE AGENTS (RB):
-        - Gus Edwards (RB): Value 890, Trend 📈, AVAILABLE
-        - Ty Chandler (RB): Value 650, Trend ➡️, AVAILABLE
-        - Rico Dowdle (RB): Value 580, Trend 📉, AVAILABLE (Questionable)
+        MY ROSTER:
+        - Christian McCaffrey (RB): 4,200, STARTER
+        - D'Andre Swift (RB): 2,100, BENCH
+        - Darrell Henderson (RB): 450, BENCH
+        - Boston Scott (RB): 250, BENCH
+        ...
+
+        TOP AVAILABLE FREE AGENTS:
+        - Tank Dell (WR): Value 1,250, Trend 📈, AVAILABLE
+        - Jaylen Warren (RB): Value 980, Trend ➡️, AVAILABLE
         ...
         ```
 
