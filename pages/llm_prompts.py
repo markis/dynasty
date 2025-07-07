@@ -517,7 +517,7 @@ def generate_playoff_push_prompt(user_input: UserInput, roster_df: pl.DataFrame,
     base_prompt += get_league_ownership_summary(roster_df)
     base_prompt += get_free_agents_context(roster_df, None, 20)
 
-    base_prompt += f"""
+    base_prompt += """
 Please provide:
 1. Playoff chances assessment based on current roster
 2. Must-win vs nice-to-have game identification
@@ -920,7 +920,7 @@ def _render_rookie_evaluation_prompt(user_input: UserInput, roster_df: pl.DataFr
 
     # Get all players for selection
     all_players = sorted(roster_df.get_column("full_name").unique().to_list())
-    
+
     rookie_players = st.multiselect(
         "Select rookie players to evaluate",
         options=all_players,
@@ -953,7 +953,7 @@ def _render_injury_impact_prompt(user_input: UserInput, roster_df: pl.DataFrame)
 
     # Get all players for selection
     all_players = sorted(roster_df.get_column("full_name").unique().to_list())
-    
+
     injured_players = st.multiselect(
         "Select injured players to analyze",
         options=all_players,
