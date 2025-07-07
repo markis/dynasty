@@ -488,9 +488,6 @@ def generate_keeper_cut_analysis_prompt(user_input: UserInput, roster_df: pl.Dat
     base_prompt += get_roster_context(roster_df, user_input.owner_name)
     base_prompt += get_free_agents_context(roster_df, None, 15)  # Available alternatives
 
-    # Add age/contract info if available
-    user_roster = roster_df.filter(pl.col("owner_name") == user_input.owner_name).sort("value", descending=False)
-
     base_prompt += f"""
 Please provide:
 1. Bottom {cut_count} cut candidates with reasoning
@@ -691,13 +688,27 @@ def _handle_prompt_generation(
     selected_prompt: str, user_input: UserInput, roster_df: pl.DataFrame, current_username: str
 ) -> None:
     """Handle the generation of different prompt types."""
+    # Group 1: Prompts with special handling
     if selected_prompt == "Trade Analysis":
         _render_trade_analysis_prompt(user_input, roster_df, current_username)
     elif selected_prompt == "Waiver Wire / Free Agents":
         _render_waiver_wire_prompt(user_input, roster_df, current_username)
     elif selected_prompt == "Who to Draft Next":
         _render_draft_decision_prompt(user_input, roster_df)
-    elif selected_prompt == "Lineup Optimization":
+    elif selected_prompt == "Rookie Evaluation":
+        _render_rookie_evaluation_prompt(user_input, roster_df)
+    elif selected_prompt == "Injury Impact Analysis":
+        _render_injury_impact_prompt(user_input, roster_df)
+    else:
+        # Group 2: Simple prompts without complex setup
+        _handle_simple_prompt_generation(selected_prompt, user_input, roster_df)
+
+
+def _handle_simple_prompt_generation(
+    selected_prompt: str, user_input: UserInput, roster_df: pl.DataFrame
+) -> None:
+    """Handle simple prompt types that don't need complex setup."""
+    if selected_prompt == "Lineup Optimization":
         _render_lineup_optimization_prompt(user_input, roster_df)
     elif selected_prompt == "Draft Strategy":
         _render_draft_strategy_prompt(user_input, roster_df)
@@ -707,12 +718,8 @@ def _handle_prompt_generation(
         _render_keeper_cut_prompt(user_input, roster_df)
     elif selected_prompt == "Playoff Push Strategy":
         _render_playoff_push_prompt(user_input, roster_df)
-    elif selected_prompt == "Rookie Evaluation":
-        _render_rookie_evaluation_prompt(user_input, roster_df)
     elif selected_prompt == "Buy Low/Sell High":
         _render_buy_low_sell_high_prompt(user_input, roster_df)
-    elif selected_prompt == "Injury Impact Analysis":
-        _render_injury_impact_prompt(user_input, roster_df)
 
 
 def _render_trade_analysis_prompt(user_input: UserInput, roster_df: pl.DataFrame, current_username: str) -> None:
