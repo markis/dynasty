@@ -350,18 +350,32 @@ class SleeperService:
     BASE_URL: Final[str] = "https://api.sleeper.app/v1"
     __current_state: SeasonMetaDict | None = None
 
-    def __init__(self, session: requests.Session | None = None) -> None:
+    # Draft configuration settings
+    DEFAULT_FUTURE_YEARS: Final[int] = 3  # Number of future years to generate picks for
+    DEFAULT_ROUNDS_PER_YEAR: Final[int] = 4  # Number of draft rounds per year
+
+    def __init__(
+        self,
+        session: requests.Session | None = None,
+        *,
+        future_years: int = DEFAULT_FUTURE_YEARS,
+        rounds_per_year: int = DEFAULT_ROUNDS_PER_YEAR,
+    ) -> None:
         """
         Initialize the SleeperService with an optional HTTP session.
 
         Args:
         ----
             session: Optional HTTP session for making requests. If None, a new session is created.
+            future_years: Number of future years to generate draft picks for
+            rounds_per_year: Number of draft rounds per year
 
         """
         if session is None:
             session = requests.Session()
         self.session = session
+        self.future_years = future_years
+        self.rounds_per_year = rounds_per_year
 
     def __enter__(self) -> Self:
         """
@@ -691,6 +705,111 @@ class SleeperService:
 
         return labeled_json
 
+    @staticmethod
+    def _safe_convert_sleeper_ids(sleeper_ids: list[str]) -> list[int]:
+        """
+        Safely convert sleeper ID strings to integers.
+
+        Args:
+        ----
+            sleeper_ids: List of sleeper ID strings from API
+
+        Returns:
+        -------
+            List of valid integer IDs, skipping any invalid ones
+
+        """
+        result = []
+        for sleeper_id in sleeper_ids:
+            if sleeper_id and sleeper_id.isnumeric():
+                try:
+                    result.append(int(sleeper_id))
+                except ValueError:
+                    # Skip invalid IDs
+                    continue
+        return result
+
+    def _process_traded_picks(
+        self,
+        roster_dict: SleeperRosterDict,
+        traded_picks: list[SleeperTradedPickDict],
+    ) -> list[str]:
+        """
+        Process traded picks to generate roster pick list.
+
+        Args:
+        ----
+            roster_dict: Roster data from Sleeper API
+            traded_picks: List of traded draft picks
+
+        Returns:
+        -------
+            List of pick strings for this roster
+
+        """
+        roster_picks: list[str] = []
+        if not traded_picks:
+            return roster_picks
+
+        season = self.get_current_season()
+        next_undrafted_season = season + 1
+
+        # Add picks owned by this roster
+        roster_picks = [
+            f"{pick['season']} Mid {get_placement(pick['round'])}"
+            for pick in traded_picks
+            if pick["owner_id"] == roster_dict["roster_id"] and int(pick["season"]) >= next_undrafted_season
+        ]
+
+        # Calculate lost picks
+        lost_picks: set[str] = {
+            f"{pick['season']} Mid {get_placement(pick['round'])}"
+            for pick in traded_picks
+            if pick["roster_id"] == roster_dict["roster_id"] and int(pick["season"]) >= next_undrafted_season
+        }
+
+        # Generate future draft picks based on configuration
+        for season in range(next_undrafted_season, next_undrafted_season + self.future_years):
+            for round_ in range(1, self.rounds_per_year + 1):
+                pick = f"{season} Mid {get_placement(round_)}"
+                if pick not in lost_picks:
+                    roster_picks.append(pick)
+
+        return roster_picks
+
+    def _process_drafted_players(
+        self,
+        roster_dict: SleeperRosterDict,
+        drafted: list[SleeperDraftPickDict],
+    ) -> list[int]:
+        """
+        Process drafted players for this roster.
+
+        Args:
+        ----
+            roster_dict: Roster data from Sleeper API
+            drafted: List of drafted players
+
+        Returns:
+        -------
+            List of drafted player IDs for this roster
+
+        """
+        drafted_players: list[int] = []
+        if not drafted:
+            return drafted_players
+
+        for draft in drafted:
+            if draft["picked_by"] == roster_dict["owner_id"]:
+                player_id = draft["player_id"]
+                if player_id and str(player_id).isnumeric():
+                    try:
+                        drafted_players.append(int(player_id))
+                    except ValueError:
+                        # Skip invalid player IDs
+                        continue
+        return drafted_players
+
     def convert_roster_data(
         self,
         roster_dict: SleeperRosterDict,
@@ -718,38 +837,19 @@ class SleeperService:
         """
         starters_data = roster_dict.get("starters") or []
         players_data = roster_dict.get("players") or []
-        starters = [int(sleeper_id) for sleeper_id in starters_data if sleeper_id and sleeper_id.isnumeric()]
-        players = [int(sleeper_id) for sleeper_id in players_data if sleeper_id and sleeper_id.isnumeric()]
+
+        # Safely convert sleeper IDs to integers with validation
+        starters = self._safe_convert_sleeper_ids(starters_data)
+        players = self._safe_convert_sleeper_ids(players_data)
+
         name = user_dict["display_name"]
 
-        roster_picks: list[str] = []
-        if traded_picks:
-            season = self.get_current_season()
-            next_undrafted_season = season + 1
-            roster_picks = [
-                f"{pick['season']} Mid {get_placement(pick['round'])}"
-                for pick in traded_picks
-                if pick["owner_id"] == roster_dict["roster_id"] and int(pick["season"]) >= next_undrafted_season
-            ]
-            lost_picks: set[str] = {
-                f"{pick['season']} Mid {get_placement(pick['round'])}"
-                for pick in traded_picks
-                if pick["roster_id"] == roster_dict["roster_id"] and int(pick["season"]) >= next_undrafted_season
-            }
+        # Process traded picks
+        roster_picks = self._process_traded_picks(roster_dict, traded_picks)
 
-            # TODO: year/round should come from the league settings
-            for season in range(next_undrafted_season, next_undrafted_season + 3):
-                for round_ in range(1, 4):
-                    pick = f"{season} Mid {get_placement(round_)}"
-                    if pick not in lost_picks:
-                        roster_picks.append(pick)
-
-        drafted_players: list[int] = []
-        if drafted:
-            drafted_players = [
-                int(draft["player_id"]) for draft in drafted if draft["picked_by"] == roster_dict["owner_id"]
-            ]
-            players.extend(drafted_players)
+        # Process drafted players
+        drafted_players = self._process_drafted_players(roster_dict, drafted)
+        players.extend(drafted_players)
 
         return Roster(
             league_id=roster_dict["league_id"],

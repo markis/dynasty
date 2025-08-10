@@ -23,8 +23,17 @@ def create_database(url: str = PSQL_URL) -> Engine:
     return engine
 
 
-def upsert_players(session: Session, players: Iterable[Player]) -> None:
-    """Upsert players into the database, updating existing records if necessary."""
+def upsert_players(session: Session, players: Iterable[Player], *, batch_size: int = 500) -> None:
+    """
+    Upsert players into the database, updating existing records if necessary.
+
+    Args:
+    ----
+        session: Database session
+        players: Iterable of Player objects to upsert
+        batch_size: Number of records to process before committing (default: 500)
+
+    """
     for count, player in enumerate(players):
         stmt = (
             insert(Player)
@@ -91,13 +100,24 @@ def upsert_players(session: Session, players: Iterable[Player]) -> None:
         )
         session.exec(stmt)  # type: ignore[call-overload]
 
-        if count % 100 == 0:
+        if count % batch_size == 0 and count > 0:
             session.commit()
     session.commit()
 
 
-def upsert_player_rankings(session: Session, player_rankings: Iterable[PlayerRanking]) -> None:
-    """Upsert player rankings into the database, updating existing records if necessary."""
+def upsert_player_rankings(
+    session: Session, player_rankings: Iterable[PlayerRanking], *, batch_size: int = 1000
+) -> None:
+    """
+    Upsert player rankings into the database, updating existing records if necessary.
+
+    Args:
+    ----
+        session: Database session
+        player_rankings: Iterable of PlayerRanking objects to upsert
+        batch_size: Number of records to process before committing (default: 1000)
+
+    """
     for count, ranking in enumerate(player_rankings):
         stmt = (
             insert(PlayerRanking)
@@ -116,7 +136,7 @@ def upsert_player_rankings(session: Session, player_rankings: Iterable[PlayerRan
         )
         session.exec(stmt)  # type: ignore[call-overload]
 
-        if count % 100 == 0:
+        if count % batch_size == 0 and count > 0:
             session.commit()
     session.commit()
 

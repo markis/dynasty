@@ -126,3 +126,8 @@ known-first-party = ["dynasty"]
 [tool.ruff.lint.flake8-pytest-style]
 fixture-parentheses = false
 mark-parentheses = false
+
+[dependency-groups]
+dev = [
+    "pytest>=8.4.1",
+]

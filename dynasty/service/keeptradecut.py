@@ -246,7 +246,7 @@ class KTCService:
                 # remove the leading "var playersArray = "
                 data = clean_line[len(token) :]
                 # remove the trailing semicolon
-                return data.rstrip(";")
+                return str(data).rstrip(";")
         return None
 
     def get_rankings(self, *, back_fill: bool) -> Iterable[PlayerRanking]:

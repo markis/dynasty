@@ -30,8 +30,16 @@ def get_text(tag: NavigableString | Tag | int | None) -> str:
     """
     if tag is None:
         return ""
-    if isinstance(tag, Tag | NavigableString | str):
-        return tag.text.strip()
+    if isinstance(tag, Tag):
+        # Tag objects have .text property which returns str
+        text_content: str = tag.text
+        return text_content.strip()
+    if isinstance(tag, NavigableString):
+        # NavigableString IS the text content
+        return str(tag).strip()
+    if isinstance(tag, str):
+        return tag.strip()
+    # Handle any other types (like int) by converting to string
     return str(tag).strip()
 
 
