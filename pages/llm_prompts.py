@@ -274,7 +274,9 @@ TRADE DETAILS:
         base_prompt += f"\nTRADING PARTNER'S ROSTER ({their_team}):\n"
         partner_roster_context = get_roster_context(roster_df, their_team)
         # Remove the header from partner context since we're adding our own
-        partner_roster_clean = partner_roster_context.replace(f"\nMY ROSTER ({their_team}) - Total Value:", "\nTotal Value:")
+        partner_roster_clean = partner_roster_context.replace(
+            f"\nMY ROSTER ({their_team}) - Total Value:", "\nTotal Value:"
+        )
         base_prompt += partner_roster_clean
 
     base_prompt += get_league_ownership_summary(roster_df)
@@ -577,7 +579,9 @@ def generate_buy_low_sell_high_prompt(user_input: UserInput, roster_df: pl.DataF
                 owner = row.get("owner_name", "Available")
                 value = _safe_format_value(row.get("value"))
                 trend = _safe_format_trend(row.get("trend"))
-                base_prompt += f"- {row['full_name']} ({row['position']}): Value {value:,}, Trend +{trend:.3f}, Owner: {owner}\n"
+                base_prompt += (
+                    f"- {row['full_name']} ({row['position']}): Value {value:,}, Trend +{trend:.3f}, Owner: {owner}\n"
+                )
 
         if len(trending_down) > 0:
             base_prompt += "\nTRENDING DOWN PLAYERS:\n"
@@ -585,7 +589,9 @@ def generate_buy_low_sell_high_prompt(user_input: UserInput, roster_df: pl.DataF
                 owner = row.get("owner_name", "Available")
                 value = _safe_format_value(row.get("value"))
                 trend = _safe_format_trend(row.get("trend"))
-                base_prompt += f"- {row['full_name']} ({row['position']}): Value {value:,}, Trend {trend:.3f}, Owner: {owner}\n"
+                base_prompt += (
+                    f"- {row['full_name']} ({row['position']}): Value {value:,}, Trend {trend:.3f}, Owner: {owner}\n"
+                )
 
     base_prompt += """
 Please provide:
@@ -704,9 +710,7 @@ def _handle_prompt_generation(
         _handle_simple_prompt_generation(selected_prompt, user_input, roster_df)
 
 
-def _handle_simple_prompt_generation(
-    selected_prompt: str, user_input: UserInput, roster_df: pl.DataFrame
-) -> None:
+def _handle_simple_prompt_generation(selected_prompt: str, user_input: UserInput, roster_df: pl.DataFrame) -> None:
     """Handle simple prompt types that don't need complex setup."""
     if selected_prompt == "Lineup Optimization":
         _render_lineup_optimization_prompt(user_input, roster_df)
@@ -750,7 +754,9 @@ def _initialize_trade_session_state(other_teams: list[str]) -> None:
         st.session_state.their_players = []
 
 
-def _render_player_selection(roster_df: pl.DataFrame, current_username: str, other_teams: list[str]) -> tuple[str, list[str], list[str]]:
+def _render_player_selection(
+    roster_df: pl.DataFrame, current_username: str, other_teams: list[str]
+) -> tuple[str, list[str], list[str]]:
     """Render player selection interface and return selections."""
     col1, col2 = st.columns(2)
 
@@ -759,8 +765,10 @@ def _render_player_selection(roster_df: pl.DataFrame, current_username: str, oth
         trading_partner = st.selectbox(
             "Trading Partner",
             options=other_teams,
-            index=other_teams.index(st.session_state.trade_partner) if st.session_state.trade_partner in other_teams else 0,
-            key="trade_partner_select"
+            index=other_teams.index(st.session_state.trade_partner)
+            if st.session_state.trade_partner in other_teams
+            else 0,
+            key="trade_partner_select",
         )
 
         # Update session state if partner changed
@@ -808,7 +816,11 @@ def _render_trade_summary(my_players: list[str], their_players: list[str]) -> No
 
 
 def _render_trade_action_buttons(
-    user_input: UserInput, roster_df: pl.DataFrame, my_players: list[str], their_players: list[str], trading_partner: str
+    user_input: UserInput,
+    roster_df: pl.DataFrame,
+    my_players: list[str],
+    their_players: list[str],
+    trading_partner: str,
 ) -> None:
     """Render trade action buttons."""
     col_btn1, col_btn2, col_btn3 = st.columns([1, 1, 2])
@@ -824,7 +836,9 @@ def _render_trade_action_buttons(
             if not my_players and not their_players:
                 st.warning("Please select at least one player from either side of the trade.")
             else:
-                prompt = generate_trade_analysis_prompt(user_input, roster_df, my_players, their_players, trading_partner)
+                prompt = generate_trade_analysis_prompt(
+                    user_input, roster_df, my_players, their_players, trading_partner
+                )
                 _display_generated_prompt(prompt, "trade_prompt")
 
 
@@ -852,11 +866,16 @@ def _render_draft_decision_prompt(user_input: UserInput, roster_df: pl.DataFrame
     col1, col2 = st.columns(2)
 
     with col1:
-        draft_position = st.text_input("Current Draft Position (optional)", placeholder="e.g., Round 3, Pick 7", key="draft_position_input")
+        draft_position = st.text_input(
+            "Current Draft Position (optional)", placeholder="e.g., Round 3, Pick 7", key="draft_position_input"
+        )
 
     with col2:
         position_focus = st.multiselect(
-            "Positions to Consider", list(POSITIONS), help="Leave empty to consider all positions", key="draft_position_focus"
+            "Positions to Consider",
+            list(POSITIONS),
+            help="Leave empty to consider all positions",
+            key="draft_position_focus",
         )
 
     if st.button("Generate Draft Decision Prompt", type="primary", key="generate_draft_prompt"):
@@ -913,7 +932,9 @@ def _render_playoff_push_prompt(user_input: UserInput, roster_df: pl.DataFrame) 
     st.subheader("🏆 Playoff Push Strategy")
     st.markdown("This prompt will help you strategize for making the playoffs.")
 
-    weeks_remaining = st.number_input("Weeks remaining in regular season", min_value=1, max_value=17, value=6, key="weeks_remaining_input")
+    weeks_remaining = st.number_input(
+        "Weeks remaining in regular season", min_value=1, max_value=17, value=6, key="weeks_remaining_input"
+    )
 
     if st.button("Generate Playoff Push Prompt", type="primary", key="generate_playoff_push_prompt"):
         prompt = generate_playoff_push_prompt(user_input, roster_df, weeks_remaining)
@@ -932,7 +953,7 @@ def _render_rookie_evaluation_prompt(user_input: UserInput, roster_df: pl.DataFr
         "Select rookie players to evaluate",
         options=all_players,
         help="Select one or more rookie players for analysis",
-        key="rookie_players_select"
+        key="rookie_players_select",
     )
 
     if st.button("Generate Rookie Evaluation Prompt", type="primary", key="generate_rookie_evaluation_prompt"):
@@ -965,7 +986,7 @@ def _render_injury_impact_prompt(user_input: UserInput, roster_df: pl.DataFrame)
         "Select injured players to analyze",
         options=all_players,
         help="Select one or more injured players for impact analysis",
-        key="injured_players_select"
+        key="injured_players_select",
     )
 
     if st.button("Generate Injury Impact Prompt", type="primary", key="generate_injury_impact_prompt"):
@@ -998,10 +1019,7 @@ def _get_my_players_selection(roster_df: pl.DataFrame, current_username: str) ->
 
     # Use session state to maintain selections
     selected = st.multiselect(
-        "My Players (trading away)",
-        options=my_player_options,
-        default=valid_selections,
-        key="my_players_select"
+        "My Players (trading away)", options=my_player_options, default=valid_selections, key="my_players_select"
     )
 
     # Update session state
@@ -1023,7 +1041,7 @@ def _get_their_players_selection(roster_df: pl.DataFrame, trading_partner: str) 
         f"Their Players (receiving from {trading_partner})",
         options=their_player_options,
         default=valid_selections,
-        key="their_players_select"
+        key="their_players_select",
     )
 
     # Update session state

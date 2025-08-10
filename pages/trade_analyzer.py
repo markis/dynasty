@@ -12,10 +12,10 @@ import streamlit as st
 from pages.shared_utils import (
     HELP_TEXT_TREND,
     UserInput,
+    dump_cookies,
     get_processed_data,
     get_user_input,
     render_home_nav,
-    dump_cookies,
 )
 
 st.set_page_config("Trade Analyzer", ":arrows_counterclockwise:", layout="wide")

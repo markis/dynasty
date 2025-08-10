@@ -14,11 +14,11 @@ from pages.shared_utils import (
     IR_POSITIONS,
     POSITIONS,
     UserInput,
+    dump_cookies,
     get_processed_data,
     get_rosters_df,
     get_user_input,
     render_home_nav,
-    dump_cookies,
 )
 
 st.set_page_config("IR Stash", ":hospital:", layout="wide")

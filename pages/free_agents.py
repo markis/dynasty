@@ -12,10 +12,10 @@ from pages.shared_utils import (
     HELP_TEXT_TREND,
     POSITIONS,
     UserInput,
+    dump_cookies,
     get_processed_data,
     get_user_input,
     render_home_nav,
-    dump_cookies,
 )
 
 st.set_page_config("Free Agents", ":runner:", layout="wide")

@@ -16,10 +16,10 @@ from pages.shared_utils import (
     POSITIONS,
     POSITIONS_WITH_PICK,
     UserInput,
+    dump_cookies,
     get_processed_data,
     get_user_input,
     render_home_nav,
-    dump_cookies,
 )
 
 st.set_page_config("Team Analysis", ":bar_chart:", layout="wide")
