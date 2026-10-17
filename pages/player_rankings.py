@@ -31,7 +31,7 @@ def _load_rankings_data(user_input: UserInput) -> pl.DataFrame:
     prog = st.progress(0)
 
     # Get processed data
-    players_df, rankings_df, roster_df = get_processed_data(user_input)
+    _players_df, rankings_df, _roster_df = get_processed_data(user_input)
     _ = prog.progress(100)
     _ = prog.empty()
 
@@ -301,7 +301,7 @@ def render_player_rankings(user_input: UserInput) -> None:
         user_input: UserInput object containing all user preferences
 
     """
-    owner_id, current_username, league, ranking_set, starters_only, include_picks, time_frame = user_input
+    _owner_id, _current_username, _league, ranking_set, _starters_only, _include_picks, _time_frame = user_input
 
     st.header(f"Player Rankings - {ranking_set.value}")
 

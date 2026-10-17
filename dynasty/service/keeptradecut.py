@@ -234,19 +234,35 @@ class KTCService:
         if not isinstance(body, Tag):
             err = "Body element is not a valid tag"
             raise TypeError(err)
-        script_element = body.find("script")
-        if not isinstance(script_element, Tag):
+        script_elements = body.find_all("script")
+        if not script_elements:
             err = "Could not find script elements on page"
             raise TypeError(err)
 
+        json_parse_prefix = "JSON.parse(document.getElementById("
         token = f"var {variable} = "
-        for line in script_element.text.splitlines():
-            clean_line = line.strip()
-            if clean_line.startswith(token):
+        for script_element in script_elements:
+            if not isinstance(script_element, Tag):
+                continue
+            for line in script_element.text.splitlines():
+                clean_line = line.strip()
+                if not clean_line.startswith(token):
+                    continue
                 # remove the leading "var playersArray = "
                 data = clean_line[len(token) :]
                 # remove the trailing semicolon
-                return str(data).rstrip(";")
+                data = str(data).rstrip(";").strip()
+                if data.startswith(json_parse_prefix):
+                    # KeepTradeCut moved the JSON payload into a
+                    # <script type="application/json" id="..."> element:
+                    # var playersArray = JSON.parse(document.getElementById('ktc-players').textContent);
+                    element_id = data[len(json_parse_prefix) :].split(")", maxsplit=1)[0]
+                    element_id = element_id.strip().strip("'\"")
+                    json_element = doc.find("script", id=element_id)
+                    if json_element is None:
+                        return None
+                    return str(json_element.text).strip()
+                return data
         return None
 
     def get_rankings(self, *, back_fill: bool) -> Iterable[PlayerRanking]:
@@ -294,7 +310,7 @@ class KTCService:
         url: str = SUPER_FLEX_URL if league_type == LeagueType.SuperFlex else URL
         data = self._get_data_from_page(url, "playersArray")
         if data is None:
-            err = "Could not find player data on page"
+            err = f"Could not find player data (playersArray) on page: {url}"
             raise ValueError(err)
 
         today = datetime.now(UTC).date()
@@ -328,7 +344,7 @@ class KTCService:
         url: str = SUPER_FLEX_URL if league_type == LeagueType.SuperFlex else URL
         data = self._get_data_from_page(url, "playersArray")
         if data is None:
-            err = "Could not find player data on page"
+            err = f"Could not find player data (playersArray) on page: {url}"
             raise ValueError(err)
 
         json_data: list[KTCPlayerData] = json.loads(data)
@@ -342,7 +358,7 @@ class KTCService:
 
             data = self._get_data_from_page(player_url, variable)
             if data is None:
-                err = "Could not find player data on page"
+                err = f"Could not find player data ({variable}) on page: {player_url}"
                 raise ValueError(err)
 
             is_pick = PlayerPosition.from_str(player["position"]) == PlayerPosition.PICK

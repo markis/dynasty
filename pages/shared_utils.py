@@ -536,7 +536,7 @@ def get_processed_data(user_input: UserInput) -> tuple[pl.DataFrame, pl.DataFram
         Tuple of (players_df, rankings_df, roster_df)
 
     """
-    owner_id, current_username, league, ranking_set, starters_only, include_picks, time_frame = user_input
+    _owner_id, _current_username, league, ranking_set, starters_only, include_picks, time_frame = user_input
 
     players_df = get_players()
     rankings_df = get_players_and_rankings(league.league_type, ranking_set, players_df, time_frame)

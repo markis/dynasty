@@ -531,15 +531,21 @@ def render_league_analytics(user_input: UserInput) -> None:
         user_input: UserInput object containing all user preferences
 
     """
-    owner_id, current_username, league, ranking_set, starters_only, include_picks, time_frame = user_input
+    _owner_id, _current_username, league, _ranking_set, _starters_only, _include_picks, _time_frame = user_input
 
     st.header("📈 League Analytics")
     st.markdown(f"Comprehensive analysis of **{league.name}** dynamics and trends")
 
     # Load and calculate analytics data
-    (players_df, rankings_df, roster_df, competitive_balance, position_analysis, market_trends, value_concentration) = (
-        _load_league_analytics_data(user_input)
-    )
+    (
+        _players_df,
+        _rankings_df,
+        roster_df,
+        competitive_balance,
+        position_analysis,
+        market_trends,
+        value_concentration,
+    ) = _load_league_analytics_data(user_input)
 
     if len(roster_df) == 0:
         st.warning("No roster data available for analysis.")

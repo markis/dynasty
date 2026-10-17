@@ -115,7 +115,7 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "**/scripts/*" = ["INP001", "T201"]
-"**/tests/**/*" = ["PLC1901", "PLR2004", "PLR6301", "S", "TID252"]
+"**/tests/**/*" = ["PLC1901", "PLR2004", "PLR6301", "S", "SLF001", "TID252"] # tests may exercise private helpers directly
 
 [tool.ruff.lint.flake8-tidy-imports]
 ban-relative-imports = "all"

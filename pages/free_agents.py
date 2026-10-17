@@ -27,7 +27,7 @@ def _load_free_agents_data(user_input: UserInput) -> tuple[pl.DataFrame, pl.Data
     prog = st.progress(0)
 
     # Get processed data
-    players_df, rankings_df, roster_df = get_processed_data(user_input)
+    _players_df, rankings_df, roster_df = get_processed_data(user_input)
     _ = prog.progress(60)
 
     # Get only rostered players (players who actually have an owner)
@@ -191,12 +191,12 @@ def render_free_agents(user_input: UserInput) -> None:
         user_input: UserInput object containing all user preferences
 
     """
-    owner_id, current_username, league, ranking_set, starters_only, include_picks, time_frame = user_input
+    _owner_id, _current_username, league, _ranking_set, _starters_only, _include_picks, _time_frame = user_input
 
     st.header(f"Free Agents - {league.name}")
 
     # Load and process data
-    fa_rankings_df, roster_df = _load_free_agents_data(user_input)
+    fa_rankings_df, _roster_df = _load_free_agents_data(user_input)
 
     # Position filter
     selected_positions = _render_position_filter(fa_rankings_df)
