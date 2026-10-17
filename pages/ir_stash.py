@@ -26,13 +26,13 @@ st.set_page_config("IR Stash", ":hospital:", layout="wide")
 
 def _load_ir_stash_data(user_input: UserInput) -> pl.DataFrame:
     """Load and process IR stash candidates data."""
-    owner_id, current_username, league, ranking_set, starters_only, include_picks, time_frame = user_input
+    _owner_id, _current_username, league, ranking_set, _starters_only, include_picks, _time_frame = user_input
 
     # Progress bar for data loading
     prog = st.progress(0)
 
     # Get processed data
-    players_df, rankings_df, roster_df = get_processed_data(user_input)
+    _players_df, rankings_df, _roster_df = get_processed_data(user_input)
     _ = prog.progress(80)
 
     # Get IR stash candidates
@@ -234,7 +234,7 @@ def render_ir_stash(user_input: UserInput) -> None:
         user_input: UserInput object containing all user preferences
 
     """
-    owner_id, current_username, league, ranking_set, starters_only, include_picks, time_frame = user_input
+    _owner_id, _current_username, league, _ranking_set, _starters_only, _include_picks, _time_frame = user_input
 
     st.header(f"IR Stash Candidates - {league.name}")
 

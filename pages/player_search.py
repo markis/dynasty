@@ -197,7 +197,7 @@ def _render_search_filters(rankings_df: pl.DataFrame) -> tuple[dict, bool]:
 
 def _render_search_results_header() -> None:
     """Render search results header with clear comparison button."""
-    col1, col2 = st.columns([3, 1])
+    _col1, col2 = st.columns([3, 1])
 
     with col2:
         if st.button("Clear Comparison"):
@@ -365,7 +365,7 @@ def render_player_search(user_input: UserInput) -> None:
         user_input: UserInput object containing all user preferences
 
     """
-    owner_id, current_username, league, ranking_set, starters_only, include_picks, time_frame = user_input
+    _owner_id, _current_username, _league, _ranking_set, _starters_only, _include_picks, _time_frame = user_input
 
     # Initialize search-specific session state
     init_search_session_state()

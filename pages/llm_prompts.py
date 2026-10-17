@@ -643,14 +643,14 @@ def render_llm_prompts(user_input: UserInput) -> None:
         user_input: UserInput object containing all user preferences
 
     """
-    owner_id, current_username, league, ranking_set, starters_only, include_picks, time_frame = user_input
+    _owner_id, current_username, _league, _ranking_set, _starters_only, _include_picks, _time_frame = user_input
 
     st.header("🤖 LLM Prompt Generator")
     st.markdown("Generate contextual fantasy football prompts for ChatGPT, Perplexity, Claude, and other AI assistants")
 
     # Get processed data
     with st.spinner("Loading league data..."):
-        players_df, rankings_df, roster_df = get_processed_data(user_input)
+        _players_df, _rankings_df, roster_df = get_processed_data(user_input)
 
     if len(roster_df) == 0:
         st.warning("No roster data available.")
@@ -823,7 +823,7 @@ def _render_trade_action_buttons(
     trading_partner: str,
 ) -> None:
     """Render trade action buttons."""
-    col_btn1, col_btn2, col_btn3 = st.columns([1, 1, 2])
+    col_btn1, col_btn2, _col_btn3 = st.columns([1, 1, 2])
 
     with col_btn1:
         if st.button("🔄 Reset Selections", key="reset_trade_selections"):

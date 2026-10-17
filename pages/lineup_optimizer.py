@@ -213,7 +213,7 @@ def _load_optimizer_data(
     user_input: UserInput,
 ) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame, pl.DataFrame, pl.DataFrame]:
     """Load and prepare data for lineup optimizer."""
-    owner_id, current_username, league, ranking_set, starters_only, include_picks, time_frame = user_input
+    _owner_id, current_username, _league, _ranking_set, _starters_only, _include_picks, _time_frame = user_input
 
     # Get processed data
     with st.spinner("Loading your roster data..."):
@@ -486,19 +486,19 @@ def render_lineup_optimizer(user_input: UserInput) -> None:
         user_input: UserInput object containing all user preferences
 
     """
-    owner_id, current_username, league, ranking_set, starters_only, include_picks, time_frame = user_input
+    _owner_id, _current_username, league, _ranking_set, _starters_only, _include_picks, _time_frame = user_input
 
     st.header("🎯 Lineup Optimizer")
     st.markdown("Optimize your starting lineup and get strategic roster recommendations")
 
     # Load data
-    players_df, rankings_df, user_roster, current_starters, current_bench = _load_optimizer_data(user_input)
+    _players_df, _rankings_df, user_roster, current_starters, current_bench = _load_optimizer_data(user_input)
 
     if len(user_roster) == 0:
         return
 
     # Calculate optimal lineup
-    optimal_starters, optimal_bench = get_optimal_lineup(user_roster, league.roster_positions)
+    optimal_starters, _optimal_bench = get_optimal_lineup(user_roster, league.roster_positions)
 
     # Render roster overview
     _render_roster_overview(user_roster, current_starters, optimal_starters)

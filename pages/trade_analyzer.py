@@ -476,7 +476,7 @@ def render_trade_analyzer(user_input: UserInput) -> None:
         user_input: UserInput object containing all user preferences
 
     """
-    owner_id, current_username, league, ranking_set, starters_only, include_picks, time_frame = user_input
+    _owner_id, current_username, _league, _ranking_set, _starters_only, _include_picks, _time_frame = user_input
 
     # Initialize trade-specific session state
     init_trade_session_state()
@@ -485,7 +485,7 @@ def render_trade_analyzer(user_input: UserInput) -> None:
     st.markdown("Analyze potential trades between teams in your league")
 
     # Load data
-    players_df, rankings_df, roster_df = _load_trade_data(user_input)
+    _players_df, _rankings_df, roster_df = _load_trade_data(user_input)
 
     # Get team owners
     owners = _get_team_owners(roster_df)

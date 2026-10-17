@@ -34,7 +34,7 @@ def render_team_analysis(user_input: UserInput) -> None:
         user_input: UserInput object containing all user preferences
 
     """
-    owner_id, current_username, league, ranking_set, starters_only, include_picks, time_frame = user_input
+    owner_id, current_username, league, _ranking_set, starters_only, include_picks, _time_frame = user_input
 
     st.header(f"Team Analysis - {league.name}")
 
@@ -55,7 +55,7 @@ def render_team_analysis(user_input: UserInput) -> None:
     prog = st.progress(0)
 
     # Get processed data
-    players_df, rankings_df, roster_df = get_processed_data(user_input)
+    _players_df, _rankings_df, roster_df = get_processed_data(user_input)
     _ = prog.progress(50)
 
     # Determine positions to show

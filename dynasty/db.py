@@ -98,7 +98,7 @@ def upsert_players(session: Session, players: Iterable[Player], *, batch_size: i
                 },
             )
         )
-        session.exec(stmt)  # type: ignore[call-overload]
+        session.exec(stmt)
 
         if count % batch_size == 0 and count > 0:
             session.commit()
@@ -134,7 +134,7 @@ def upsert_player_rankings(
                 set_={"value": ranking.value},
             )
         )
-        session.exec(stmt)  # type: ignore[call-overload]
+        session.exec(stmt)
 
         if count % batch_size == 0 and count > 0:
             session.commit()
@@ -159,7 +159,7 @@ def record_picks(session: Session, picks: list[Pick]) -> int:
     ]
 
     stmt = insert(Pick).values(pick_values).on_conflict_do_nothing()
-    result = session.exec(stmt)  # type: ignore[call-overload]
+    result = session.exec(stmt)
     session.commit()
     return int(result.rowcount)
 
