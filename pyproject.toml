@@ -114,6 +114,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
+"tests/test_keeptradecut.py" = ["SLF001"] # tests may exercise private helpers directly
 "**/scripts/*" = ["INP001", "T201"]
 "**/tests/**/*" = ["PLC1901", "PLR2004", "PLR6301", "S", "TID252"]
 
